@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DS-160 Page Assistant</title>
+    <link rel="stylesheet" href="./ds160-assistant.css" />
+  </head>
+  <body>
+    <div class="noise"></div>
+    <header id="top-steps" class="top-steps"></header>
+    <main class="shell">
+      <aside class="rail">
+        <div class="brand">
+          <div class="eyebrow">DS-160 Local Draft</div>
+          <h1>Page Assistant</h1>
+          <p>按正式 DS-160 流程走。你点当前页，系统只处理当前页，不替你跨页。</p>
+        </div>
+        <div id="summary" class="summary"></div>
+        <div id="page-nav" class="page-nav flow-nav"></div>
+      </aside>
+
+      <section class="stage">
+        <header class="stage-head">
+          <div>
+            <div class="eyebrow">Current Page</div>
+            <h2 id="page-title">Loading</h2>
+          </div>
+          <div class="actions">
+            <button id="apply-page" class="primary">完成当前页预填</button>
+            <button id="reset-page" class="ghost">重置当前页</button>
+          </div>
+        </header>
+
+        <section class="status-strip">
+          <div class="metric">
+            <span>Auto Fill</span>
+            <strong id="metric-fill">0</strong>
+          </div>
+          <div class="metric">
+            <span>Needs Review</span>
+            <strong id="metric-review">0</strong>
+          </div>
+          <div class="metric">
+            <span>Blocked</span>
+            <strong id="metric-blocked">0</strong>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Field Payload</h3>
+            <p>点按钮后，当前页会被标记为已完成预填，但不会自动跳页。</p>
+          </div>
+          <div id="field-list" class="field-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Review / Blocked</h3>
+            <p>这些是当前页需要人工确认或补充的项目。</p>
+          </div>
+          <div id="review-list" class="review-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Page Notes</h3>
+            <p>正式流程里存在但尚未建模的页面，会在这里明确提示。</p>
+          </div>
+          <div id="notes-list" class="review-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="./data/draft_bundle.js"></script>
+    <script src="./ds160-assistant.js"></script>
+  </body>
+</html>
