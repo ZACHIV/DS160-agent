@@ -4,12 +4,16 @@ const manifestGrid = document.getElementById("manifest-grid");
 const manualForm = document.getElementById("manual-form");
 const submitStatus = document.getElementById("submit-status");
 const jsonPreview = document.getElementById("json-preview");
-const runOcrButton = document.getElementById("run-ocr");
+const copyPromptButton = document.getElementById("copy-prompt");
+const pasteResultButton = document.getElementById("paste-result");
 const downloadButton = document.getElementById("download-json");
 const copyButton = document.getElementById("copy-json");
 const missingFields = document.getElementById("missing-fields");
-const ocrWarnings = document.getElementById("ocr-warnings");
+const visionWarnings = document.getElementById("vision-warnings");
 const documentReports = document.getElementById("document-reports");
+const resultDialog = document.getElementById("result-dialog");
+const resultInput = document.getElementById("result-input");
+const applyResultButton = document.getElementById("apply-result");
 
 const state = {
   manifest: [],
@@ -205,7 +209,7 @@ function refreshManualValidation(scrollToFirst = false) {
     clearMissingHighlights();
     renderItems(missingFields, [], "没有缺失字段。", issueCard);
   }
-  renderItems(ocrWarnings, Object.values(invalids), "没有额外提醒。", warningCard);
+  renderItems(visionWarnings, Object.values(invalids), "没有额外提醒。", warningCard);
   return { missing, invalids };
 }
 
@@ -242,10 +246,10 @@ function manifestCard(doc) {
 
 async function loadManifest() {
   submitStatus.textContent = "页面已准备好。你可以上传材料，也可以直接手动填写。";
-  const res = await fetch(`${SERVER_BASE}/ocr-intake/manifest`);
+  const res = await fetch(`${SERVER_BASE}/vision-intake/manifest`);
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.detail || "无法读取 OCR 清单");
+    throw new Error(data.detail || "无法读取图片整理清单");
   }
   state.manifest = data.documents || [];
   manifestGrid.innerHTML = state.manifest.map(manifestCard).join("");
@@ -338,11 +342,15 @@ function reportCard(doc) {
 
 
 function renderExtractionResult(data) {
-  const partialPayload = partialPayloadFromReports(data.documents || []);
+  const partialPayload = data.intake_document || {};
   applyPayloadToManualForm(partialPayload);
-  highlightMissingFields(data.missing_fields || []);
+  if (data.missing_fields?.length) {
+    highlightMissingFields(data.missing_fields || []);
+  } else {
+    clearMissingHighlights();
+  }
   renderItems(missingFields, data.missing_fields || [], "没有缺失字段。", issueCard);
-  renderItems(ocrWarnings, data.warnings || [], "没有 OCR 警告。", warningCard);
+  renderItems(visionWarnings, data.warnings || [], "没有额外提醒。", warningCard);
   renderItems(documentReports, data.documents || [], "没有文档处理结果。", reportCard);
 
   if (data.intake_document) {
@@ -363,30 +371,59 @@ function renderExtractionResult(data) {
 }
 
 
-async function runOcr() {
-  runOcrButton.disabled = true;
-  runOcrButton.textContent = "OCR 中…";
-  submitStatus.textContent = "正在上传图片并调用 OCR…";
+async function copyPrompt() {
+  copyPromptButton.disabled = true;
+  copyPromptButton.textContent = "生成中…";
   try {
     const documents = await collectUploads();
     if (!documents.length) {
       throw new Error("至少需要上传一份图片材料");
     }
-    const res = await fetch(`${SERVER_BASE}/ocr-intake/extract`, {
+    const res = await fetch(`${SERVER_BASE}/vision-intake/prompt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ documents }),
     });
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.detail || "OCR 抽取失败");
+      throw new Error(data.detail || "提示词生成失败");
+    }
+    await navigator.clipboard.writeText(data.prompt_text);
+    submitStatus.textContent = "提示词已复制。下一步请去外部大模型上传同样的图片并运行。";
+  } catch (error) {
+    submitStatus.textContent = error.message || "提示词复制失败，请稍后再试。";
+  } finally {
+    copyPromptButton.disabled = false;
+    copyPromptButton.textContent = "一键复制提示词";
+  }
+}
+
+
+function openResultDialog() {
+  resultInput.value = "";
+  resultDialog.showModal();
+}
+
+
+async function applyModelResult() {
+  try {
+    const parsed = JSON.parse(resultInput.value);
+    const res = await fetch(`${SERVER_BASE}/vision-intake/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ result: parsed }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || "模型结果处理失败");
     }
     renderExtractionResult(data);
+    resultDialog.close();
+    submitStatus.textContent = data.intake_document
+      ? "模型结果已应用，资料可以直接导出。"
+      : "模型结果已应用，但还有缺失或格式问题，请继续补齐。";
   } catch (error) {
-    submitStatus.textContent = error.message || "自动整理失败，请稍后再试。";
-  } finally {
-    runOcrButton.disabled = false;
-    runOcrButton.textContent = "用上传材料自动整理";
+    submitStatus.textContent = error.message || "无法应用模型结果。";
   }
 }
 
@@ -434,7 +471,7 @@ function renderManualResult(payload) {
   state.latestJsonText = JSON.stringify(payload, null, 2);
   jsonPreview.textContent = state.latestJsonText;
   renderItems(missingFields, [], "手填方式已补齐当前页面内容。", issueCard);
-  renderItems(ocrWarnings, [], "没有额外提醒。", warningCard);
+  renderItems(visionWarnings, [], "没有额外提醒。", warningCard);
   renderItems(documentReports, [], "这次使用的是手动填写。", reportCard);
   downloadButton.disabled = false;
   copyButton.disabled = false;
@@ -469,7 +506,9 @@ async function copyJson() {
 }
 
 
-runOcrButton.addEventListener("click", runOcr);
+copyPromptButton.addEventListener("click", copyPrompt);
+pasteResultButton.addEventListener("click", openResultDialog);
+applyResultButton.addEventListener("click", applyModelResult);
 manualForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const payload = manualPayload();

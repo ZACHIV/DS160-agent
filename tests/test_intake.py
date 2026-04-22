@@ -7,16 +7,18 @@ import unittest
 
 from visa_agent.intake_contract import intake_field_names, required_intake_fields, validate_intake_payload
 from visa_agent.intake import ApplicantIntake, build_dossier_from_intake
-from visa_agent.ocr_intake import OCRUploadedDocument, extract_intake_from_documents
+from visa_agent.vision_intake import VisionUploadedDocument, extract_intake_from_documents
 import visa_agent.server as server_module
 from visa_agent.server import (
     DraftBundleResponse,
     IntakePreviewRequest,
     FillPageRequest,
     get_draft_bundle,
-    post_ocr_extract,
-    OCRIntakeExtractRequest,
-    OCRUploadedDocumentRequest,
+    post_vision_prompt,
+    post_vision_extract,
+    post_vision_validate,
+    VisionIntakeExtractRequest,
+    VisionUploadedDocumentRequest,
     post_intake_document,
     post_intake_preview,
 )
@@ -151,101 +153,31 @@ class IntakePreviewEndpointTests(unittest.TestCase):
         self.assertGreater(len(bundle["pages"]), 0)
 
 
-class OCRIntakeTests(unittest.TestCase):
-    def test_ocr_documents_can_build_complete_intake_json(self) -> None:
-        texts = {
-            "passport_bio": """
-                Surname: ZHANG
-                Given Names: WEI
-                Sex: M
-                Date of Birth: 15 AUG 1990
-                Place of Birth: SHANGHAI
-                Passport No: E12345678
-                Date of Issue: 12 MAY 2023
-                Date of Expiry: 11 MAY 2033
-            """,
-            "trip_proof": """
-                Trip Purpose: business_tourism
-                Arrival Date: 2026-09-10
-                Length of Stay: 12 DAYS
-                Payer: Shanghai Example Trading Co., Ltd.
-            """,
-            "us_contact_proof": """
-                Contact Name: Michael Chen
-                Organization: Example US Imports
-                Phone: +1 415 555 0187
-                Address: 500 Market Street
-                City: San Francisco
-                State: California
-                Postal Code: 94105
-                mchen@example.com
-            """,
-            "employment_proof": """
-                Occupation: businessperson
-                Employer: Shanghai Example Trading Co., Ltd.
-                Employer Address: 88 Huaihai Middle Road, Shanghai, China
-            """,
-            "family_info_sheet": """
-                Marital Status: Married
-                Father: ZHANG JIANGUO
-                Mother: LI HUA
-                Spouse: WANG LI
-            """,
-            "security_questionnaire": """
-                Communicable Disease: No
-                Arrest History: No
-            """,
-        }
+class VisionIntakeTests(unittest.TestCase):
+    def test_prompt_endpoint_returns_copyable_text(self) -> None:
+        payload = post_vision_prompt(
+            VisionIntakeExtractRequest(
+                documents=[
+                    VisionUploadedDocumentRequest(
+                        kind="passport_bio",
+                        filename="passport.jpg",
+                        media_type="image/jpeg",
+                        base64_data="data:image/jpeg;base64,AAAA",
+                    )
+                ]
+            )
+        ).model_dump()
+        self.assertTrue(payload["ok"])
+        self.assertIn("passport.jpg", payload["prompt_text"])
+        self.assertIn("目标 schema", payload["prompt_text"])
 
-        def fake_extractor(document: OCRUploadedDocument, language: str) -> str:
-            return texts[document.kind]
+    def test_uploaded_images_can_build_complete_intake_json(self) -> None:
+        def fake_extractor(documents, schema) -> dict[str, object]:
+            return sample_payload()
 
         result = extract_intake_from_documents(
             [
-                OCRUploadedDocument(kind=kind, filename=f"{kind}.jpg", media_type="image/jpeg", base64_data="data:image/jpeg;base64,AAAA")
-                for kind in texts
-            ],
-            ocr_extractor=fake_extractor,
-        )
-        self.assertEqual(result.missing_fields, [])
-        self.assertIsNotNone(result.intake_document)
-        self.assertEqual(result.intake_document["surname"], "ZHANG")
-        self.assertEqual(result.intake_document["trip_purpose"], "business_tourism")
-        self.assertEqual(result.intake_document["communicable_disease"], False)
-
-    def test_ocr_does_not_fabricate_marital_status_from_passport_only(self) -> None:
-        texts = {
-            "passport_bio": """
-                Surname: ZHANG
-                Given Names: WEI
-                Sex: M
-                Date of Birth: 15 AUG 1990
-                Place of Birth: SHANGHAI
-                Passport No: E12345678
-                Date of Issue: 12 MAY 2023
-                Date of Expiry: 11 MAY 2033
-            """,
-            "trip_proof": "",
-            "us_contact_proof": "",
-            "employment_proof": "",
-            "family_info_sheet": "",
-            "security_questionnaire": "",
-        }
-
-        result = extract_intake_from_documents(
-            [
-                OCRUploadedDocument(kind=kind, filename=f"{kind}.jpg", media_type="image/jpeg", base64_data="data:image/jpeg;base64,AAAA")
-                for kind in texts
-            ],
-            ocr_extractor=lambda document, language: texts[document.kind],
-        )
-        self.assertIsNone(result.intake_document)
-        self.assertIn("marital_status", result.missing_fields)
-
-    def test_passport_document_warnings_cover_birth_and_sex_fields(self) -> None:
-        result = extract_intake_from_documents(
-            [
-                OCRUploadedDocument(kind=kind, filename=f"{kind}.jpg", media_type="image/jpeg", base64_data="data:image/jpeg;base64,AAAA")
+                VisionUploadedDocument(kind=kind, filename=f"{kind}.jpg", media_type="image/jpeg", base64_data="data:image/jpeg;base64,AAAA")
                 for kind in {
                     "passport_bio": "",
                     "trip_proof": "",
@@ -255,28 +187,60 @@ class OCRIntakeTests(unittest.TestCase):
                     "security_questionnaire": "",
                 }
             ],
-            ocr_extractor=lambda document, language: "",
+            schema={"properties": {}, "required": []},
+            model_extractor=fake_extractor,
         )
-        passport_report = next(item for item in result.documents if item.kind == "passport_bio")
-        self.assertTrue(any("sex" in warning for warning in passport_report.warnings))
-        self.assertTrue(any("date_of_birth" in warning for warning in passport_report.warnings))
-        self.assertTrue(any("birth_city" in warning for warning in passport_report.warnings))
+        self.assertEqual(result.missing_fields, [])
+        self.assertIsNotNone(result.intake_document)
+        self.assertEqual(result.intake_document["surname"], "zhang")
+        self.assertEqual(result.intake_document["trip_purpose"], "business_tourism")
+        self.assertEqual(result.intake_document["communicable_disease"], False)
 
-    def test_ocr_endpoint_returns_missing_fields_when_documents_are_incomplete(self) -> None:
+    def test_partial_model_result_returns_missing_fields(self) -> None:
+        result = extract_intake_from_documents(
+            [
+                VisionUploadedDocument(kind=kind, filename=f"{kind}.jpg", media_type="image/jpeg", base64_data="data:image/jpeg;base64,AAAA")
+                for kind in {
+                    "passport_bio": "",
+                    "trip_proof": "",
+                    "us_contact_proof": "",
+                    "employment_proof": "",
+                    "family_info_sheet": "",
+                    "security_questionnaire": "",
+                }
+            ],
+            schema={"properties": {}, "required": []},
+            model_extractor=lambda documents, schema: {"surname": "ZHANG"},
+        )
+        self.assertIsNone(result.intake_document)
+        self.assertIn("given_names", result.missing_fields)
+
+    def test_document_reports_still_track_missing_uploads(self) -> None:
+        result = extract_intake_from_documents(
+            [
+                VisionUploadedDocument(kind="passport_bio", filename="passport.jpg", media_type="image/jpeg", base64_data="data:image/jpeg;base64,AAAA")
+            ],
+            schema={"properties": {}, "required": []},
+            model_extractor=lambda documents, schema: {"surname": "ZHANG"},
+        )
+        self.assertTrue(any(item.kind == "trip_proof" and item.status == "missing" for item in result.documents))
+
+    def test_vision_endpoint_returns_missing_fields_when_model_result_is_incomplete(self) -> None:
         original = server_module.extract_intake_from_documents
 
-        def fake_extract(documents):
+        def fake_extract(documents, schema):
             return original(
-                [OCRUploadedDocument(kind=item.kind, filename=item.filename, media_type=item.media_type, base64_data=item.base64_data) for item in documents],
-                ocr_extractor=lambda document, language: "Surname: ZHANG" if document.kind == "passport_bio" else "",
+                [VisionUploadedDocument(kind=item.kind, filename=item.filename, media_type=item.media_type, base64_data=item.base64_data) for item in documents],
+                schema=schema,
+                model_extractor=lambda documents, schema: {"surname": "ZHANG"},
             )
 
         server_module.extract_intake_from_documents = fake_extract
         try:
-            payload = post_ocr_extract(
-                OCRIntakeExtractRequest(
+            payload = post_vision_extract(
+                VisionIntakeExtractRequest(
                     documents=[
-                        OCRUploadedDocumentRequest(
+                        VisionUploadedDocumentRequest(
                             kind="passport_bio",
                             filename="passport.jpg",
                             media_type="image/jpeg",
@@ -291,6 +255,12 @@ class OCRIntakeTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertIsNone(payload["intake_document"])
         self.assertIn("given_names", payload["missing_fields"])
+
+    def test_validate_endpoint_accepts_pasted_model_result(self) -> None:
+        payload = post_vision_validate(type("Req", (), {"result": sample_payload()})()).model_dump()
+        self.assertTrue(payload["ok"])
+        self.assertIsNotNone(payload["intake_document"])
+        self.assertEqual(payload["missing_fields"], [])
 
 
 if __name__ == "__main__":

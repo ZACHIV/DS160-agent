@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>DS-160 Intake</title>
+    <title>DS-160 Image Intake</title>
     <link rel="stylesheet" href="./intake.css" />
   </head>
   <body>
@@ -14,12 +14,12 @@
           <p class="eyebrow">China B1/B2 Intake</p>
           <h1>上传材料或手动填写，都可以生成申请资料。</h1>
           <p class="lede">
-            这一步只负责整理申请资料。你可以选择上传图片走 OCR，也可以保留手动填写。无论哪种方式，最后都会生成同一份申请资料文件，再交给执行页导入。
+            这一步只负责整理申请资料。你可以选择上传图片交给视觉大模型识别，也可以保留手动填写。无论哪种方式，最后都会生成同一份申请资料文件，再交给执行页导入。
           </p>
           <div class="hero-strip">
             <div>
               <span>采集方式</span>
-              <strong>OCR + 手填并行</strong>
+              <strong>识图 + 手填并行</strong>
             </div>
             <div>
               <span>边界</span>
@@ -36,8 +36,8 @@
             <span class="aside-kicker">How To Use</span>
             <ol>
               <li>先看下方 6 类材料清单。</li>
-              <li>材料齐全时优先用 OCR，省去大部分手填。</li>
-              <li>OCR 缺字段时，可以直接在手填区补全。</li>
+              <li>材料齐全时优先用图片识别，省去大部分手填。</li>
+              <li>识别缺字段时，可以直接在手填区补全。</li>
               <li>生成资料后，再去执行页导入同一份文件。</li>
             </ol>
           </div>
@@ -81,12 +81,15 @@
 
           <div class="form-group">
             <div class="group-head">
-              <p class="eyebrow">02 OCR Upload</p>
-              <h2>上传图片自动提取</h2>
+              <p class="eyebrow">02 Image Upload</p>
+              <h2>上传图片并手动交给大模型</h2>
             </div>
             <div id="manifest-grid" class="manifest-grid"></div>
             <div class="form-actions compact">
-              <button id="run-ocr" type="button" class="primary">用上传材料自动整理</button>
+              <div class="action-row">
+                <button id="copy-prompt" type="button" class="primary">一键复制提示词</button>
+                <button id="paste-result" type="button" class="ghost">粘贴模型返回结果</button>
+              </div>
             </div>
           </div>
 
@@ -284,13 +287,13 @@
               <button id="download-json" type="button" class="ghost">下载资料文件</button>
               <button id="copy-json" type="button" class="ghost">复制资料内容</button>
             </div>
-            <p id="submit-status" class="submit-status">你可以先尝试 OCR；如果识别不全，再在手填区补齐。</p>
+            <p id="submit-status" class="submit-status">先复制提示词，在外部大模型中上传同样的图片，再把模型返回的结果粘贴回来。</p>
           </div>
         </section>
 
         <aside class="preview-pane">
           <div class="preview-head">
-            <p class="eyebrow">Result</p>
+            <p class="eyebrow">Image Result</p>
             <h2>整理结果</h2>
             <p>这里显示缺失项、提醒，以及最终生成的申请资料内容。</p>
           </div>
@@ -306,14 +309,14 @@
             <header>
               <h3>提醒</h3>
             </header>
-            <div id="ocr-warnings" class="item-list empty">完成整理后显示。</div>
+            <div id="vision-warnings" class="item-list empty">完成整理后显示。</div>
           </section>
 
           <section class="preview-card">
             <header>
               <h3>上传材料处理情况</h3>
             </header>
-            <div id="document-reports" class="item-list empty">使用 OCR 时显示。</div>
+            <div id="document-reports" class="item-list empty">使用图片识别时显示。</div>
           </section>
 
           <section class="preview-card">
@@ -325,6 +328,20 @@
         </aside>
       </section>
     </main>
+
+    <dialog id="result-dialog" class="result-dialog">
+      <form method="dialog" class="result-dialog-card">
+        <div class="group-head">
+          <p class="eyebrow">Model Result</p>
+          <h2>粘贴大模型返回结果</h2>
+        </div>
+        <textarea id="result-input" class="result-input" placeholder='请直接粘贴模型返回的 JSON 对象'></textarea>
+        <div class="action-row">
+          <button id="apply-result" type="button" class="primary">应用结果</button>
+          <button type="submit" class="ghost">取消</button>
+        </div>
+      </form>
+    </dialog>
 
     <script src="./intake.js"></script>
   </body>

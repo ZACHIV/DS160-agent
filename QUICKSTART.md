@@ -26,13 +26,13 @@ source .venv/bin/activate
 pip install fastapi uvicorn
 ```
 
-如果要使用 OCR 采集，额外建议配置：
+如果要使用图片识别采集，额外需要配置视觉模型：
 
 ```bash
-export OCR_SPACE_API_KEY=你的免费key
+export VISION_MODEL_API_KEY=你的key
+export VISION_MODEL_NAME=你的视觉模型名
+export VISION_MODEL_BASE_URL=你的兼容接口地址
 ```
-
-默认会回退到 `helloworld`，只适合开发联调。
 
 ## 启动流程
 
@@ -76,14 +76,14 @@ PYTHONPATH=src .venv/bin/python -m visa_agent.server
 INFO:     Uvicorn running on http://127.0.0.1:8765
 ```
 
-### 第 3 步：先用 OCR 生成 intake JSON
+### 第 3 步：先用图片识别或手动填写生成 intake JSON
 
 在浏览器中打开：
 ```
 file:///home/zhangzheng/0_platform/personal/idea/amercican_visa/app/intake.html
 ```
 
-按页面清单上传图片，点击“开始 OCR 采集”。如果右侧没有缺失字段，就下载生成的 `intake-v1` JSON。
+按页面清单上传图片，点击“复制提示词”；然后去外部视觉大模型中上传同样的图片，并把模型返回结果粘贴回页面。或者直接手动填写。资料完整后，下载生成的 `intake-v1` JSON。
 
 ### 第 4 步：打开执行器并导入同一份 JSON
 
@@ -147,7 +147,7 @@ file:///home/zhangzheng/0_platform/personal/idea/amercican_visa/app/ds160-assist
 }
 ```
 
-或者直接在 OCR 采集页生成 JSON 后，在执行器页面导入这份 JSON。
+或者直接在图片采集页生成 JSON 后，在执行器页面导入这份 JSON。
 
 ### 修改服务端口
 

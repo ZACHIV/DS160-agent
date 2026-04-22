@@ -21,7 +21,7 @@ from visa_agent.browser.live_form_fill import (
     save_current_page,
 )
 from visa_agent.draft_bundle import build_draft_bundle
-from visa_agent.intake_contract import load_intake_schema, validate_intake_payload
+from visa_agent.intake_contract import intake_field_errors, load_intake_schema, normalized_intake_payload, validate_intake_payload
 from visa_agent.intake import (
     ApplicantIntake,
     build_dossier_from_intake,
@@ -29,7 +29,7 @@ from visa_agent.intake import (
     intake_payload_to_dossier,
 )
 from visa_agent.mapping import map_dossier_to_ds160
-from visa_agent.ocr_intake import OCRUploadedDocument, extract_intake_from_documents, ocr_document_specs
+from visa_agent.vision_intake import VisionUploadedDocument, build_prompt_text, extract_intake_from_documents, vision_document_specs
 from visa_agent.page_ids import PAGE_ID_NORMALIZE
 from visa_agent.planner import build_execution_plan
 from visa_agent.schema import load_dossier
@@ -151,7 +151,7 @@ class IntakeSchemaResponse(BaseModel):
     schema_document: dict[str, Any]
 
 
-class OCRUploadedDocumentRequest(BaseModel):
+class VisionUploadedDocumentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: str
     filename: str
@@ -159,22 +159,32 @@ class OCRUploadedDocumentRequest(BaseModel):
     base64_data: str
 
 
-class OCRIntakeExtractRequest(BaseModel):
+class VisionIntakeExtractRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    documents: list[OCRUploadedDocumentRequest]
+    documents: list[VisionUploadedDocumentRequest]
 
 
-class OCRManifestResponse(BaseModel):
+class VisionManifestResponse(BaseModel):
     ok: bool
     documents: list[dict[str, Any]]
 
 
-class OCRIntakeExtractResponse(BaseModel):
+class VisionPromptResponse(BaseModel):
+    ok: bool
+    prompt_text: str
+
+
+class VisionIntakeExtractResponse(BaseModel):
     ok: bool
     intake_document: dict[str, Any] | None
     missing_fields: list[str]
     warnings: list[str]
     documents: list[dict[str, Any]]
+
+
+class VisionModelResultRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    result: dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
@@ -324,28 +334,74 @@ def get_draft_bundle():
     return DraftBundleResponse(ok=True, bundle=build_draft_bundle(dossier))
 
 
-@app.get("/ocr-intake/manifest", response_model=OCRManifestResponse)
-def get_ocr_manifest():
-    """Describe which documents the OCR intake page expects from the user."""
-    return OCRManifestResponse(ok=True, documents=ocr_document_specs())
+@app.get("/vision-intake/manifest", response_model=VisionManifestResponse)
+def get_vision_manifest():
+    """Describe which images the vision intake page expects from the user."""
+    return VisionManifestResponse(ok=True, documents=vision_document_specs())
 
 
-@app.post("/ocr-intake/extract", response_model=OCRIntakeExtractResponse)
-def post_ocr_extract(req: OCRIntakeExtractRequest):
-    """Run OCR over uploaded images and attempt to build the intake-v1 JSON document."""
+@app.post("/vision-intake/prompt", response_model=VisionPromptResponse)
+def post_vision_prompt(req: VisionIntakeExtractRequest):
+    """Build the prompt text that the user can paste into an external vision model."""
+    documents = [
+        VisionUploadedDocument(
+            kind=item.kind,
+            filename=item.filename,
+            media_type=item.media_type,
+            base64_data=item.base64_data,
+        )
+        for item in req.documents
+    ]
+    return VisionPromptResponse(ok=True, prompt_text=build_prompt_text(documents, load_intake_schema()))
+
+
+@app.post("/vision-intake/extract", response_model=VisionIntakeExtractResponse)
+def post_vision_extract(req: VisionIntakeExtractRequest):
+    """Run vision-model extraction over uploaded images and attempt to build the intake-v1 JSON document."""
     try:
         result = extract_intake_from_documents(
             [
-                OCRUploadedDocument(
+                VisionUploadedDocument(
                     kind=item.kind,
                     filename=item.filename,
                     media_type=item.media_type,
                     base64_data=item.base64_data,
                 )
                 for item in req.documents
-            ]
+            ],
+            schema=load_intake_schema(),
         )
-        return OCRIntakeExtractResponse(ok=True, **result.to_dict())
+        return VisionIntakeExtractResponse(ok=True, **result.to_dict())
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/vision-intake/validate", response_model=VisionIntakeExtractResponse)
+def post_vision_validate(req: VisionModelResultRequest):
+    """Validate a manually obtained vision-model result and convert it into the intake result shape."""
+    try:
+        payload = normalized_intake_payload(req.result)
+        missing_fields = [
+            field
+            for field, value in payload.items()
+            if field in load_intake_schema().get("required", []) and value in (None, "")
+        ]
+        warnings: list[str] = []
+        intake_document = None
+        if not missing_fields:
+            try:
+                intake_document = validate_intake_payload(payload)
+            except Exception as exc:
+                missing_fields = list(intake_field_errors(payload).keys())
+                warnings.append(str(exc))
+                intake_document = None
+        return VisionIntakeExtractResponse(
+            ok=True,
+            intake_document=intake_document,
+            missing_fields=missing_fields,
+            warnings=warnings,
+            documents=[],
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
