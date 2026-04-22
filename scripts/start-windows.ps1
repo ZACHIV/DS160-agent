@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $DryRun = $false
 $ChromeScript = Join-Path $RootDir "scripts\start-chrome-debug-windows.ps1"
-$LogDir = Join-Path $RootDir ".omx\logs"
+$LogDir = Join-Path $RootDir ".logs"
 $ServerLog = Join-Path $LogDir "server.log"
 $PowerShellHost = (Get-Process -Id $PID).Path
 

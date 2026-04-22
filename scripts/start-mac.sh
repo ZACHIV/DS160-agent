@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DRY_RUN=0
 SERVER_SCRIPT="$ROOT_DIR/scripts/start-server.sh"
 CHROME_SCRIPT="$ROOT_DIR/scripts/start-chrome-debug.sh"
-LOG_DIR="$ROOT_DIR/.omx/logs"
+LOG_DIR="$ROOT_DIR/.logs"
 SERVER_LOG="$LOG_DIR/server.log"
 
 while (($# > 0)); do

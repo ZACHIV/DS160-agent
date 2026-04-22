@@ -1,5 +1,5 @@
 # Build and environment directories
-.omx/
+.logs/
 .codex/
 .local-browser-profile/
 .playwright-cli/
