@@ -27,8 +27,9 @@
             <h2 id="page-title">Loading</h2>
           </div>
           <div class="actions">
-            <button id="apply-page" class="primary">完成当前页预填</button>
-            <button id="reset-page" class="ghost">重置当前页</button>
+            <button id="fill-page" class="primary">一键填入当前页</button>
+            <button id="save-page" class="ghost">保存当前页</button>
+            <button id="reset-page" class="ghost">重置标记</button>
           </div>
         </header>
 
@@ -45,7 +46,12 @@
             <span>Blocked</span>
             <strong id="metric-blocked">0</strong>
           </div>
+          <div class="metric" id="server-status-metric">
+            <span>本地服务</span>
+            <strong id="server-status">检测中…</strong>
+          </div>
         </section>
+        <div id="fill-result" class="fill-result" style="display:none"></div>
 
         <section class="panel">
           <div class="panel-head">

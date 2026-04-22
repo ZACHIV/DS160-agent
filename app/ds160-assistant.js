@@ -1,7 +1,10 @@
+const SERVER_BASE = "http://127.0.0.1:8765";
+
 const bundle = window.DS160_DRAFT_BUNDLE;
 const state = {
   currentPageId: bundle.pages[0]?.page_id || null,
   completed: {},
+  serverConnected: false,
 };
 
 const topSteps = document.getElementById("top-steps");
@@ -14,7 +17,10 @@ const notesList = document.getElementById("notes-list");
 const metricFill = document.getElementById("metric-fill");
 const metricReview = document.getElementById("metric-review");
 const metricBlocked = document.getElementById("metric-blocked");
-const applyButton = document.getElementById("apply-page");
+const serverStatus = document.getElementById("server-status");
+const fillResult = document.getElementById("fill-result");
+const fillButton = document.getElementById("fill-page");
+const saveButton = document.getElementById("save-page");
 const resetButton = document.getElementById("reset-page");
 
 function getPage(pageId) {
@@ -161,14 +167,97 @@ function render() {
   renderNotes(page);
 }
 
-applyButton.addEventListener("click", () => {
-  state.completed[state.currentPageId] = true;
-  render();
+// ---------------------------------------------------------------------------
+// Server connection
+// ---------------------------------------------------------------------------
+
+function showFillResult(ok, message, detail) {
+  fillResult.style.display = "block";
+  fillResult.className = "fill-result " + (ok ? "fill-ok" : "fill-err");
+  fillResult.innerHTML = `<strong>${message}</strong>${detail ? `<div class="fill-detail">${detail}</div>` : ""}`;
+  clearTimeout(fillResult._timer);
+  if (ok) {
+    fillResult._timer = setTimeout(() => { fillResult.style.display = "none"; }, 5000);
+  }
+}
+
+async function checkServerStatus() {
+  try {
+    const res = await fetch(`${SERVER_BASE}/status`, { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    state.serverConnected = data.connected;
+    if (!data.connected) {
+      serverStatus.textContent = "未连接浏览器";
+      serverStatus.style.color = "var(--c-warn, #f5a623)";
+    } else if (!data.ceac_tab_found) {
+      serverStatus.textContent = "已连接 (无DS-160标签)";
+      serverStatus.style.color = "var(--c-warn, #f5a623)";
+    } else {
+      serverStatus.textContent = "已连接 ✓";
+      serverStatus.style.color = "var(--c-ok, #6fcf97)";
+    }
+  } catch {
+    state.serverConnected = false;
+    serverStatus.textContent = "服务未启动";
+    serverStatus.style.color = "var(--c-err, #eb5757)";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Fill / Save actions
+// ---------------------------------------------------------------------------
+
+fillButton.addEventListener("click", async () => {
+  fillButton.disabled = true;
+  fillButton.textContent = "填入中…";
+  try {
+    const res = await fetch(`${SERVER_BASE}/fill-page`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page_id: state.currentPageId }),
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      state.completed[state.currentPageId] = true;
+      render();
+      showFillResult(true, `填入成功 (${data.page_key})`, `已填: ${data.filled.join(", ") || "无"} | 缺失: ${data.missing.join(", ") || "无"}`);
+    } else {
+      const msg = data.detail || data.message || "填入失败";
+      showFillResult(false, "填入失败", msg);
+    }
+  } catch (err) {
+    showFillResult(false, "网络错误", "请确认本地服务已启动：python -m visa_agent.server");
+  } finally {
+    fillButton.disabled = false;
+    fillButton.textContent = "一键填入当前页";
+    checkServerStatus();
+  }
+});
+
+saveButton.addEventListener("click", async () => {
+  saveButton.disabled = true;
+  saveButton.textContent = "保存中…";
+  try {
+    const res = await fetch(`${SERVER_BASE}/save-page`, { method: "POST" });
+    const data = await res.json();
+    showFillResult(data.ok, data.ok ? "保存成功" : "保存按钮未找到", JSON.stringify(data.payload || {}));
+  } catch (err) {
+    showFillResult(false, "网络错误", "请确认本地服务已启动");
+  } finally {
+    saveButton.disabled = false;
+    saveButton.textContent = "保存当前页";
+  }
 });
 
 resetButton.addEventListener("click", () => {
   delete state.completed[state.currentPageId];
+  fillResult.style.display = "none";
   render();
 });
+
+// Poll server status every 5 seconds
+checkServerStatus();
+setInterval(checkServerStatus, 5000);
 
 render();

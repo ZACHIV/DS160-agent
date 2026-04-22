@@ -325,3 +325,28 @@ button.ghost {
     grid-template-columns: 1fr;
   }
 }
+
+/* Fill result feedback */
+.fill-result {
+  margin: 0 2rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-family: "SF Mono", ui-monospace, monospace;
+  font-size: 0.82rem;
+  border-left: 4px solid;
+}
+.fill-ok {
+  background: rgba(36, 89, 77, 0.08);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.fill-err {
+  background: rgba(141, 35, 51, 0.08);
+  border-color: var(--block);
+  color: var(--block);
+}
+.fill-detail {
+  margin-top: 0.3rem;
+  opacity: 0.8;
+  word-break: break-all;
+}
