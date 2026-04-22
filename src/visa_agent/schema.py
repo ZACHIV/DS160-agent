@@ -163,6 +163,10 @@ def _load_security(payload: dict[str, Any]) -> SecurityBackground:
 
 def load_dossier(path: str | Path) -> ApplicantDossier:
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    return load_dossier_payload(raw)
+
+
+def load_dossier_payload(raw: dict[str, Any]) -> ApplicantDossier:
     evidence_catalog = {
         item["id"]: EvidenceItem(
             id=item["id"],

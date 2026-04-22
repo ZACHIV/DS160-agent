@@ -32,7 +32,7 @@ from visa_agent.mapping import map_dossier_to_ds160
 from visa_agent.vision_intake import VisionUploadedDocument, build_prompt_text, extract_intake_from_documents, vision_document_specs
 from visa_agent.page_ids import PAGE_ID_NORMALIZE
 from visa_agent.planner import build_execution_plan
-from visa_agent.schema import load_dossier
+from visa_agent.schema import load_dossier, load_dossier_payload
 
 # ---------------------------------------------------------------------------
 # Config
@@ -44,6 +44,7 @@ DOSSIER_PATH = os.environ.get(
     str(Path(__file__).parent.parent.parent / "sample_data" / "china_b1b2_sample.json"),
 )
 ACTIVE_INTAKE_DOCUMENT: dict[str, Any] | None = None
+ACTIVE_DOCUMENT_KIND: str | None = None
 
 app = FastAPI(title="DS-160 Local Fill Server", version="1.0.0")
 
@@ -195,6 +196,8 @@ class VisionModelResultRequest(BaseModel):
 def _load_dossier():
     if ACTIVE_INTAKE_DOCUMENT is not None:
         try:
+            if ACTIVE_DOCUMENT_KIND == "dossier":
+                return load_dossier_payload(ACTIVE_INTAKE_DOCUMENT)
             return intake_payload_to_dossier(validate_intake_payload(ACTIVE_INTAKE_DOCUMENT))
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Cannot build dossier from intake document: {exc}")
@@ -235,6 +238,27 @@ def _build_preview_payload(dossier) -> IntakePreviewResponse:
         hard_stops=list(execution_plan.hard_stops),
         page_count=int(draft_bundle["summary"]["page_count"]),
     )
+
+
+def _coerce_active_document(payload: dict[str, Any]) -> tuple[dict[str, Any], str, str]:
+    if _looks_like_full_dossier(payload):
+        dossier = load_dossier_payload(payload)
+        return payload, dossier.case_id, "dossier"
+    intake_document = validate_intake_payload(payload)
+    dossier = intake_payload_to_dossier(intake_document)
+    return intake_document, dossier.case_id, "intake"
+
+
+def _looks_like_full_dossier(payload: dict[str, Any]) -> bool:
+    required_sections = {
+        "case_id",
+        "identity",
+        "travel_plan",
+        "employment_education",
+        "family_contacts",
+        "security_background",
+    }
+    return required_sections.issubset(payload.keys())
 
 
 # Map from page_id (as used in the frontend bundle) to fill function
@@ -302,15 +326,15 @@ def get_intake_schema():
 
 
 @app.post("/intake-document", response_model=IntakeDocumentResponse)
-def post_intake_document(req: IntakePreviewRequest):
+def post_intake_document(req: IntakePreviewRequest | dict[str, Any]):
     """Set the active intake document used by the fill assistant."""
-    global ACTIVE_INTAKE_DOCUMENT
-    ACTIVE_INTAKE_DOCUMENT = validate_intake_payload(req.model_dump())
-    dossier = build_dossier_from_intake(ApplicantIntake(**ACTIVE_INTAKE_DOCUMENT))
+    global ACTIVE_INTAKE_DOCUMENT, ACTIVE_DOCUMENT_KIND
+    payload = req.model_dump() if isinstance(req, BaseModel) else dict(req)
+    ACTIVE_INTAKE_DOCUMENT, case_id, ACTIVE_DOCUMENT_KIND = _coerce_active_document(payload)
     return IntakeDocumentResponse(
         ok=True,
         intake_document=ACTIVE_INTAKE_DOCUMENT,
-        case_id=dossier.case_id,
+        case_id=case_id,
     )
 
 
@@ -319,7 +343,7 @@ def get_intake_document():
     """Return the currently loaded intake document."""
     if ACTIVE_INTAKE_DOCUMENT is None:
         raise HTTPException(status_code=404, detail="No intake document loaded")
-    dossier = build_dossier_from_intake(ApplicantIntake(**ACTIVE_INTAKE_DOCUMENT))
+    dossier = _load_dossier()
     return IntakeDocumentResponse(
         ok=True,
         intake_document=ACTIVE_INTAKE_DOCUMENT,

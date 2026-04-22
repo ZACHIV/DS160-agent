@@ -275,7 +275,7 @@ async function checkServerStatus() {
 async function loadIntakeDocument() {
   const file = intakeFile.files?.[0];
   if (!file) {
-    showFillResult(false, "缺少文件", "请选择一份 intake-v1 JSON 文档。");
+    showFillResult(false, "缺少文件", "请选择一份资料 JSON 文档。支持 intake-v1 和完整 dossier。");
     return;
   }
   loadIntakeButton.disabled = true;
@@ -291,17 +291,17 @@ async function loadIntakeDocument() {
     });
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.detail || "导入 intake 文档失败");
+      throw new Error(data.detail || "导入资料文档失败");
     }
       intakeDocStatus.textContent = `${file.name} 已导入。`;
     await fetchBundle();
-    showFillResult(true, "导入成功", "已根据 intake JSON 构建执行 bundle。");
+    showFillResult(true, "导入成功", "已根据资料 JSON 构建执行 bundle。");
   } catch (error) {
     showFillResult(false, "导入失败", error.message || "请检查 JSON 格式");
     intakeDocStatus.textContent = "导入失败，请检查 schema 和服务状态。";
   } finally {
     loadIntakeButton.disabled = false;
-    loadIntakeButton.textContent = "导入 intake JSON";
+    loadIntakeButton.textContent = "导入资料 JSON";
     checkServerStatus();
   }
 }
@@ -311,7 +311,7 @@ loadIntakeButton.addEventListener("click", loadIntakeDocument);
 
 fillButton.addEventListener("click", async () => {
   if (!currentBundle()) {
-    showFillResult(false, "尚未导入资料", "请先导入采集页生成的资料文件。");
+    showFillResult(false, "尚未导入资料", "请先导入一份资料 JSON 文件。");
     return;
   }
   fillButton.disabled = true;

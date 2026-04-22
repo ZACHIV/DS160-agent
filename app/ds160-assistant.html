@@ -14,14 +14,14 @@
         <div class="brand">
           <div class="eyebrow">DS-160 Local Draft</div>
           <h1>Page Assistant</h1>
-          <p>先导入采集页生成的资料文件，再按正式 DS-160 流程逐页执行。</p>
+          <p>先导入资料 JSON，再按正式 DS-160 流程逐页执行。支持最小 intake-v1 和完整 dossier。</p>
         </div>
         <section class="import-card">
           <label class="upload-field">
             <span class="eyebrow">资料文件</span>
             <input id="intake-file" type="file" accept="application/json,.json" />
           </label>
-          <button id="load-intake" class="primary wide">导入资料文件</button>
+          <button id="load-intake" class="primary wide">导入资料 JSON</button>
           <div id="intake-doc-status" class="import-status">尚未导入资料文件。</div>
         </section>
         <div id="summary" class="summary"></div>

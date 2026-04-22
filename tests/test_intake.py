@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import fields
+import json
 from pathlib import Path
 import re
 import unittest
@@ -63,6 +64,7 @@ def sample_payload() -> dict[str, object]:
 ROOT = Path(__file__).resolve().parents[1]
 INTAKE_HTML = ROOT / "app" / "intake.html"
 INTAKE_JS = ROOT / "app" / "intake.js"
+FULL_DOSSIER_SAMPLE = ROOT / "sample_data" / "china_b1b2_sample.json"
 
 
 class IntakeBuilderTests(unittest.TestCase):
@@ -151,6 +153,7 @@ class IntakeBuilderTests(unittest.TestCase):
 class IntakePreviewEndpointTests(unittest.TestCase):
     def tearDown(self) -> None:
         server_module.ACTIVE_INTAKE_DOCUMENT = None
+        server_module.ACTIVE_DOCUMENT_KIND = None
 
     def test_preview_endpoint_returns_status_summary(self) -> None:
         payload = post_intake_preview(IntakePreviewRequest(**sample_payload())).model_dump()
@@ -166,6 +169,16 @@ class IntakePreviewEndpointTests(unittest.TestCase):
         response: DraftBundleResponse = get_draft_bundle()
         bundle = response.model_dump()["bundle"]
         self.assertEqual(bundle["case_id"], "INTAKE-LOCAL-001")
+        self.assertIn("summary", bundle)
+        self.assertIn("pages", bundle)
+        self.assertGreater(len(bundle["pages"]), 0)
+
+    def test_full_dossier_document_can_be_loaded_into_active_bundle(self) -> None:
+        full_payload = json.loads(FULL_DOSSIER_SAMPLE.read_text(encoding="utf-8"))
+        post_intake_document(full_payload)
+        response: DraftBundleResponse = get_draft_bundle()
+        bundle = response.model_dump()["bundle"]
+        self.assertEqual(bundle["case_id"], "CN-B1B2-001")
         self.assertIn("summary", bundle)
         self.assertIn("pages", bundle)
         self.assertGreater(len(bundle["pages"]), 0)

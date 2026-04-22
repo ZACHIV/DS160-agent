@@ -9,6 +9,7 @@ from visa_agent.browser.live_form_fill import (
     PAGE_MATCHERS,
     PREVIOUS_TRAVEL_URL_SUBSTRING,
     _address_phone_defaults,
+    _fill_security_questions,
     _family_relative_mock_dob,
     _family_spouse_defaults,
     _find_page_ws_url,
@@ -23,6 +24,10 @@ from visa_agent.browser.live_form_fill import (
     _split_employer_address,
     _work_education_previous_defaults,
     _work_education_additional_defaults,
+    fill_personal1_page,
+    fill_personal2_page,
+    fill_previous_travel_page,
+    fill_travel_page,
 )
 from visa_agent.page_ids import PAGE_ID_NORMALIZE
 
@@ -121,6 +126,133 @@ class LiveFormFillTests(unittest.TestCase):
         self.assertEqual(defaults["primary_phone"], "862155558800")
         self.assertEqual(defaults["work_phone"], "862168889900")
         self.assertEqual(defaults["email"], "zhang.wei@example.cn")
+
+    def test_personal1_fill_uses_staged_clicks_before_main_fill(self) -> None:
+        dossier = load_dossier(SAMPLE_PATH)
+        responses = [
+            {"value": {"filled": ["other_names_no", "telecode_no"], "missing": []}},
+            {"value": {"filled": ["surname"], "missing": []}},
+        ]
+        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
+            "visa_agent.browser.live_form_fill._runtime_eval",
+            side_effect=responses,
+        ) as runtime_eval, patch("visa_agent.browser.live_form_fill.time.sleep"):
+            result = fill_personal1_page(dossier)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(runtime_eval.call_count, 2)
+        first_expression = runtime_eval.call_args_list[0].args[1]
+        second_expression = runtime_eval.call_args_list[1].args[1]
+        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblOtherNames', 'N')", first_expression)
+        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblTelecodeQuestion', 'N')", first_expression)
+        self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_SURNAME", second_expression)
+
+    def test_personal2_fill_uses_staged_clicks_before_main_fill(self) -> None:
+        dossier = load_dossier(SAMPLE_PATH)
+        responses = [
+            {"value": {"filled": ["other_nationality_no", "perm_res_other_no"], "missing": []}},
+            {"value": {"filled": ["nationality"], "missing": []}},
+        ]
+        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
+            "visa_agent.browser.live_form_fill._runtime_eval",
+            side_effect=responses,
+        ) as runtime_eval, patch("visa_agent.browser.live_form_fill.time.sleep"):
+            result = fill_personal2_page(dossier)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(runtime_eval.call_count, 2)
+        first_expression = runtime_eval.call_args_list[0].args[1]
+        second_expression = runtime_eval.call_args_list[1].args[1]
+        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblAPP_OTH_NATL_IND', 'N')", first_expression)
+        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPermResOtherCntryInd', 'N')", first_expression)
+        self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_ddlAPP_NATL", second_expression)
+
+    def test_travel_fill_uses_staged_specific_travel_expansion(self) -> None:
+        dossier = load_dossier(SAMPLE_PATH)
+        responses = [
+            {"value": {"filled": ["specific_travel_yes"], "missing": []}},
+            {"value": {"filled": ["visa_type"], "missing": []}},
+            {"value": {"filled": ["purpose_specify", "arrival_day"], "missing": []}},
+        ]
+        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
+            "visa_agent.browser.live_form_fill._runtime_eval",
+            side_effect=responses,
+        ) as runtime_eval, patch(
+            "visa_agent.browser.live_form_fill._wait_for_selector",
+            return_value=True,
+        ) as wait_for_selector, patch("visa_agent.browser.live_form_fill.time.sleep"):
+            result = fill_travel_page(dossier)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(runtime_eval.call_count, 3)
+        self.assertEqual(wait_for_selector.call_count, 2)
+        first_expression = runtime_eval.call_args_list[0].args[1]
+        second_expression = runtime_eval.call_args_list[1].args[1]
+        third_expression = runtime_eval.call_args_list[2].args[1]
+        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblSpecificTravel', 'Y')", first_expression)
+        self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_dlPrincipalAppTravel_ctl00_ddlPurposeOfTrip", second_expression)
+        self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_dlPrincipalAppTravel_ctl00_ddlOtherPurpose", third_expression)
+
+    def test_previous_travel_fill_uses_staged_expansion(self) -> None:
+        dossier = load_dossier(SAMPLE_PATH)
+        responses = [
+            {"value": {"filled": ["prev_us_travel_yes"], "missing": []}},
+            {"value": {"filled": ["prev_visa_yes"], "missing": []}},
+            {"value": {"filled": ["prev_visit_day"], "missing": []}},
+        ]
+        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
+            "visa_agent.browser.live_form_fill._runtime_eval",
+            side_effect=responses,
+        ) as runtime_eval, patch(
+            "visa_agent.browser.live_form_fill._wait_for_selector",
+            return_value=True,
+        ) as wait_for_selector, patch("visa_agent.browser.live_form_fill.time.sleep"):
+            result = fill_previous_travel_page(dossier)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(runtime_eval.call_count, 3)
+        self.assertEqual(wait_for_selector.call_count, 2)
+        first_expression = runtime_eval.call_args_list[0].args[1]
+        second_expression = runtime_eval.call_args_list[1].args[1]
+        third_expression = runtime_eval.call_args_list[2].args[1]
+        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_TRAVEL_IND', 'Y')", first_expression)
+        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_IND', 'Y')", second_expression)
+        self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_DTEDay", third_expression)
+
+    def test_security_yes_answers_use_staged_textarea_fill(self) -> None:
+        dossier = load_dossier(SAMPLE_PATH)
+        responses = [
+            {"value": {"filled": ["communicable_disease_yes"], "missing": []}},
+            {"value": {"filled": ["communicable_disease_explanation"], "missing": []}},
+        ]
+        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
+            "visa_agent.browser.live_form_fill._runtime_eval",
+            side_effect=responses,
+        ) as runtime_eval, patch(
+            "visa_agent.browser.live_form_fill._wait_for_selector",
+            return_value=True,
+        ) as wait_for_selector, patch(
+            "visa_agent.browser.live_form_fill._security_yes",
+            return_value=True,
+        ), patch(
+            "visa_agent.browser.live_form_fill._security_explanation",
+            return_value="Test explanation",
+        ), patch("visa_agent.browser.live_form_fill.time.sleep"):
+            result = _fill_security_questions(
+                "security_part1",
+                [
+                    ("communicable_disease", "ctl00$SiteContentPlaceHolder$FormView1$rblDisease", "#ctl00_SiteContentPlaceHolder_FormView1_tbxDisease"),
+                ],
+                dossier,
+            )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(runtime_eval.call_count, 2)
+        self.assertTrue(wait_for_selector.called)
+        first_expression = runtime_eval.call_args_list[0].args[1]
+        second_expression = runtime_eval.call_args_list[1].args[1]
+        self.assertIn("setRadioClick(\"ctl00$SiteContentPlaceHolder$FormView1$rblDisease\", \"Y\")", first_expression)
+        self.assertIn("setText(\"#ctl00_SiteContentPlaceHolder_FormView1_tbxDisease\", \"Test explanation\")", second_expression)
 
 
 if __name__ == "__main__":

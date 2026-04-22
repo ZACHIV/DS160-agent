@@ -109,6 +109,18 @@ def fill_personal1_page(dossier: ApplicantDossier) -> VisibleControlResult:
     ws_url = _find_page_ws_url("personal1")
     d = dossier.identity
     dob = d.date_of_birth  # YYYY-MM-DD
+    ensure_expression = (
+        "(() => { "
+        + _JS_HELPERS
+        + "setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblOtherNames', 'N') ? ok('other_names_no') : miss('other_names_no'); "
+        + "setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblTelecodeQuestion', 'N') ? ok('telecode_no') : miss('telecode_no'); "
+        "return r; })()"
+    )
+    ensure_result = _runtime_eval(ws_url, ensure_expression)
+    ensure_payload = dict(ensure_result.get("value") or {})
+    time.sleep(1)
+
+    ws_url = _find_page_ws_url("personal1")
     expression = (
         "(() => { "
         + _JS_HELPERS
@@ -116,8 +128,6 @@ def fill_personal1_page(dossier: ApplicantDossier) -> VisibleControlResult:
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_GIVEN_NAME', {json.dumps(d.given_names)}) ? ok('given_names') : miss('given_names'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_FULL_NAME_NATIVE', {json.dumps(d.native_full_name or '')}) ? ok('native_full_name') : miss('native_full_name'); "
         "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbexAPP_FULL_NAME_NATIVE_NA', false); "
-        "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblOtherNames', 'N') ? ok('other_names') : miss('other_names'); "
-        "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblTelecodeQuestion', 'N') ? ok('telecode') : miss('telecode'); "
         + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlAPP_GENDER', {json.dumps(d.sex)}) ? ok('sex') : miss('sex'); "
         + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlAPP_MARITAL_STATUS', {json.dumps(d.marital_status)}) ? ok('marital_status') : miss('marital_status'); "
         + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlDOBDay', {json.dumps(dob[8:10])}) ? ok('dob_day') : miss('dob_day'); "
@@ -131,18 +141,30 @@ def fill_personal1_page(dossier: ApplicantDossier) -> VisibleControlResult:
     )
     result = _runtime_eval(ws_url, expression)
     payload = dict(result.get("value") or {})
+    payload["filled"] = list(ensure_payload.get("filled") or []) + list(payload.get("filled") or [])
+    payload["missing"] = list(ensure_payload.get("missing") or []) + list(payload.get("missing") or [])
     return VisibleControlResult(action="fill_personal1_page", ok=not payload.get("missing"), payload=payload)
 
 
 def fill_personal2_page(dossier: ApplicantDossier) -> VisibleControlResult:
     ws_url = _find_page_ws_url("personal2")
     d = dossier.identity
+    ensure_expression = (
+        "(() => { "
+        + _JS_HELPERS
+        + "setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblAPP_OTH_NATL_IND', 'N') ? ok('other_nationality_no') : miss('other_nationality_no'); "
+        + "setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPermResOtherCntryInd', 'N') ? ok('perm_res_other_no') : miss('perm_res_other_no'); "
+        "return r; })()"
+    )
+    ensure_result = _runtime_eval(ws_url, ensure_expression)
+    ensure_payload = dict(ensure_result.get("value") or {})
+    time.sleep(1)
+
+    ws_url = _find_page_ws_url("personal2")
     expression = (
         "(() => { "
         + _JS_HELPERS
         + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlAPP_NATL', {json.dumps(d.nationality)}) ? ok('nationality') : miss('nationality'); "
-        "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblAPP_OTH_NATL_IND', 'N') ? ok('other_nationality') : miss('other_nationality'); "
-        "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPermResOtherCntryInd', 'N') ? ok('perm_res_other') : miss('perm_res_other'); "
         "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbexAPP_NATIONAL_ID_NA', true) ? ok('national_id_na') : miss('national_id_na'); "
         "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbexAPP_SSN_NA', true) ? ok('ssn_na') : miss('ssn_na'); "
         "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbexAPP_TAX_ID_NA', true) ? ok('tax_id_na') : miss('tax_id_na'); "
@@ -150,6 +172,8 @@ def fill_personal2_page(dossier: ApplicantDossier) -> VisibleControlResult:
     )
     result = _runtime_eval(ws_url, expression)
     payload = dict(result.get("value") or {})
+    payload["filled"] = list(ensure_payload.get("filled") or []) + list(payload.get("filled") or [])
+    payload["missing"] = list(ensure_payload.get("missing") or []) + list(payload.get("missing") or [])
     return VisibleControlResult(action="fill_personal2_page", ok=not payload.get("missing"), payload=payload)
 
 
@@ -200,6 +224,7 @@ def fill_travel_page(dossier: ApplicantDossier) -> VisibleControlResult:
     # Map visa_class → dropdown value: "B1/B2" → "B"
     _visa_map = {"B1/B2": "B", "B1": "B", "B2": "B", "F1": "F", "J1": "J", "H1B": "H"}
     visa_val = _visa_map.get(t.visa_class.upper(), t.visa_class[0] if t.visa_class else "B")
+    other_purpose_val = _travel_other_purpose_value(t.visa_class)
     payer_val = "P" if t.payer_name else "S"
     # Travel location for "specific plans = Y" mode: use city + state
     travel_location = ", ".join(filter(None, [t.us_contact_city, t.us_contact_state]))
@@ -224,40 +249,56 @@ def fill_travel_page(dossier: ApplicantDossier) -> VisibleControlResult:
         f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbZIPCode', {json.dumps(t.us_contact_postal_code or '')}) ? ok('us_zip') : miss('us_zip'); "
     )
 
+    ensure_expression = (
+        "(() => { "
+        + _JS_HELPERS
+        + "setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblSpecificTravel', 'Y') ? ok('specific_travel_yes') : miss('specific_travel_yes'); "
+        "return r; })()"
+    )
+    ensure_result = _runtime_eval(ws_url, ensure_expression)
+    ensure_payload = dict(ensure_result.get("value") or {})
+    time.sleep(1)
+    _wait_for_selector("travel", "#ctl00_SiteContentPlaceHolder_FormView1_ddlARRIVAL_US_DTEDay", timeout_s=5)
+
+    ws_url = _find_page_ws_url("travel")
+    ensure_visa_expression = (
+        "(() => { "
+        + _JS_HELPERS
+        + f"setSelect('#ctl00_SiteContentPlaceHolder_FormView1_dlPrincipalAppTravel_ctl00_ddlPurposeOfTrip', {json.dumps(visa_val)}) ? ok('visa_type') : miss('visa_type'); "
+        "return r; })()"
+    )
+    ensure_visa_result = _runtime_eval(ws_url, ensure_visa_expression)
+    ensure_visa_payload = dict(ensure_visa_result.get("value") or {})
+    time.sleep(1)
+    _wait_for_selector("travel", "#ctl00_SiteContentPlaceHolder_FormView1_dlPrincipalAppTravel_ctl00_ddlOtherPurpose", timeout_s=5)
+
+    ws_url = _find_page_ws_url("travel")
     expression = (
         "(() => { "
         + _JS_HELPERS
-        # Purpose of trip (always fill)
-        + f"setSelect('#ctl00_SiteContentPlaceHolder_FormView1_dlPrincipalAppTravel_ctl00_ddlPurposeOfTrip', {json.dumps(visa_val)}) ? ok('visa_type') : miss('visa_type'); "
-        # Read current radio state — do NOT change it
-        "const specificTravel = (document.querySelector('input[name=\"ctl00$SiteContentPlaceHolder$FormView1$rblSpecificTravel\"]:checked') || {}).value || 'N'; "
-        "ok('specific_travel=' + specificTravel); "
-        # Branch on current radio state
-        "if (specificTravel === 'Y') { "
-        # Y-mode: arrival date, departure date, arrival/departure cities, travel location, address
+        + f"setSelect('#ctl00_SiteContentPlaceHolder_FormView1_dlPrincipalAppTravel_ctl00_ddlOtherPurpose', {json.dumps(other_purpose_val)}) ? ok('purpose_specify') : miss('purpose_specify'); "
         + arrival_js
         + departure_js
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxArriveCity', {json.dumps(t.us_contact_city or '')}) ? ok('arrive_city') : miss('arrive_city'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxDepartCity', {json.dumps(t.us_contact_city or '')}) ? ok('depart_city') : miss('depart_city'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_dtlTravelLoc_ctl00_tbxSPECTRAVEL_LOCATION', {json.dumps(travel_location)}) ? ok('travel_location') : miss('travel_location'); "
         + addr_js
-        + "} else { "
-        # N-mode: single travel date + length of stay
-        + (
-            f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlTRAVEL_DTEDay', {json.dumps(arrival[8:10].lstrip('0') or arrival[8:10])}) ? ok('travel_day') : miss('travel_day'); "
-            f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlTRAVEL_DTEMonth', {json.dumps(_month_abbrev(arrival[5:7]))}) ? ok('travel_month') : miss('travel_month'); "
-            f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxTRAVEL_DTEYear', {json.dumps(arrival[0:4])}) ? ok('travel_year') : miss('travel_year'); "
-            if arrival else "miss('travel_day'); miss('travel_month'); miss('travel_year'); "
-        )
-        + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxTRAVEL_LOS', {json.dumps(t.intended_length_of_stay_value or '')}) ? ok('los_value') : miss('los_value'); "
-        + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlTRAVEL_LOS_CD', {json.dumps(t.intended_length_of_stay_unit or 'DAYS')}) ? ok('los_unit') : miss('los_unit'); "
-        "} "
         # Payer (always fill)
         + f"setSelect('#ctl00_SiteContentPlaceHolder_FormView1_ddlWhoIsPaying', {json.dumps(payer_val)}) ? ok('payer') : miss('payer'); "
         "return r; })()"
     )
     result = _runtime_eval(ws_url, expression)
     payload = dict(result.get("value") or {})
+    payload["filled"] = (
+        list(ensure_payload.get("filled") or [])
+        + list(ensure_visa_payload.get("filled") or [])
+        + list(payload.get("filled") or [])
+    )
+    payload["missing"] = (
+        list(ensure_payload.get("missing") or [])
+        + list(ensure_visa_payload.get("missing") or [])
+        + list(payload.get("missing") or [])
+    )
     return VisibleControlResult(action="fill_travel_page", ok=not payload.get("missing"), payload=payload)
 
 
@@ -293,11 +334,33 @@ def fill_previous_travel_page(dossier: ApplicantDossier) -> VisibleControlResult
     los = dossier.travel_plan.intended_length_of_stay_value or "14"
     los_unit = _previous_travel_los_unit(dossier.travel_plan.intended_length_of_stay_unit)
 
+    ensure_prev_travel_expression = (
+        "(() => { "
+        + _JS_HELPERS
+        + "setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_TRAVEL_IND', 'Y') ? ok('prev_us_travel_yes') : miss('prev_us_travel_yes'); "
+        "return r; })()"
+    )
+    ensure_prev_travel_result = _runtime_eval(ws_url, ensure_prev_travel_expression)
+    ensure_prev_travel_payload = dict(ensure_prev_travel_result.get("value") or {})
+    time.sleep(1)
+    _wait_for_selector("previous_travel", "#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_DTEDay", timeout_s=5)
+
+    ws_url = _find_page_ws_url("previous_travel")
+    ensure_prev_visa_expression = (
+        "(() => { "
+        + _JS_HELPERS
+        + "setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_IND', 'Y') ? ok('prev_visa_yes') : miss('prev_visa_yes'); "
+        "return r; })()"
+    )
+    ensure_prev_visa_result = _runtime_eval(ws_url, ensure_prev_visa_expression)
+    ensure_prev_visa_payload = dict(ensure_prev_visa_result.get("value") or {})
+    time.sleep(1)
+    _wait_for_selector("previous_travel", "#ctl00_SiteContentPlaceHolder_FormView1_ddlPREV_VISA_ISSUED_DTEDay", timeout_s=5)
+
+    ws_url = _find_page_ws_url("previous_travel")
     expression = (
         "(() => { "
         + _JS_HELPERS
-        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_TRAVEL_IND', 'Y') ? ok('prev_us_travel_yes') : miss('prev_us_travel_yes'); "
-        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_IND', 'Y') ? ok('prev_visa_yes') : miss('prev_visa_yes'); "
         + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_REFUSED_IND', 'N') ? ok('prev_visa_refused_no') : miss('prev_visa_refused_no'); "
         + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblIV_PETITION_IND', 'N') ? ok('iv_petition_no') : miss('iv_petition_no'); "
         # Previous US Travel details
@@ -332,6 +395,16 @@ def fill_previous_travel_page(dossier: ApplicantDossier) -> VisibleControlResult
     )
     result = _runtime_eval(ws_url, expression)
     payload = dict(result.get("value") or {})
+    payload["filled"] = (
+        list(ensure_prev_travel_payload.get("filled") or [])
+        + list(ensure_prev_visa_payload.get("filled") or [])
+        + list(payload.get("filled") or [])
+    )
+    payload["missing"] = (
+        list(ensure_prev_travel_payload.get("missing") or [])
+        + list(ensure_prev_visa_payload.get("missing") or [])
+        + list(payload.get("missing") or [])
+    )
     return VisibleControlResult(action="fill_previous_travel_page", ok=not payload.get("missing"), payload=payload)
 
 
@@ -839,6 +912,15 @@ def _previous_travel_los_unit(unit: str | None) -> str:
     }.get(normalized, "Day(s)")
 
 
+def _travel_other_purpose_value(visa_class: str | None) -> str:
+    normalized = (visa_class or "").strip().upper()
+    return {
+        "B1/B2": "B1-B2",
+        "B1": "B1-CF",
+        "B2": "B2-TM",
+    }.get(normalized, "B1-B2")
+
+
 def _find_page_ws_url(page_key: str) -> str:
     matchers = PAGE_MATCHERS[page_key]
     for matcher in matchers:
@@ -872,21 +954,37 @@ def _wait_for_selector(page_key: str, selector: str, timeout_s: float = 5.0, int
 
 
 def _fill_security_questions(page_key: str, questions: list[tuple[str, str, str]], dossier: ApplicantDossier) -> VisibleControlResult:
-    ws_url = _find_page_ws_url(page_key)
-    parts = ["(() => { ", _JS_HELPERS]
+    staged_filled: list[str] = []
+    staged_missing: list[str] = []
     for answer_key, radio_name, textarea_sel in questions:
         yes = _security_yes(dossier, answer_key)
         label = "yes" if yes else "no"
-        parts.append(
-            f"setRadio({json.dumps(radio_name)}, {json.dumps('Y' if yes else 'N')}) ? ok({json.dumps(answer_key + '_' + label)}) : miss({json.dumps(answer_key + '_' + label)}); "
+        ws_url = _find_page_ws_url(page_key)
+        radio_expression = (
+            "(() => { "
+            + _JS_HELPERS
+            + f"setRadioClick({json.dumps(radio_name)}, {json.dumps('Y' if yes else 'N')}) ? ok({json.dumps(answer_key + '_' + label)}) : miss({json.dumps(answer_key + '_' + label)}); "
+            "return r; })()"
         )
+        radio_result = _runtime_eval(ws_url, radio_expression)
+        radio_payload = dict(radio_result.get("value") or {})
+        staged_filled.extend(radio_payload.get("filled") or [])
+        staged_missing.extend(radio_payload.get("missing") or [])
         if yes and textarea_sel:
-            parts.append(
-                f"setText({json.dumps(textarea_sel)}, {json.dumps(_security_explanation(dossier, answer_key))}) ? ok({json.dumps(answer_key + '_explanation')}) : miss({json.dumps(answer_key + '_explanation')}); "
+            time.sleep(1)
+            _wait_for_selector(page_key, textarea_sel, timeout_s=5)
+            ws_url = _find_page_ws_url(page_key)
+            explain_expression = (
+                "(() => { "
+                + _JS_HELPERS
+                + f"setText({json.dumps(textarea_sel)}, {json.dumps(_security_explanation(dossier, answer_key))}) ? ok({json.dumps(answer_key + '_explanation')}) : miss({json.dumps(answer_key + '_explanation')}); "
+                "return r; })()"
             )
-    parts.append("return r; })()")
-    result = _runtime_eval(ws_url, "".join(parts))
-    payload = dict(result.get("value") or {})
+            explain_result = _runtime_eval(ws_url, explain_expression)
+            explain_payload = dict(explain_result.get("value") or {})
+            staged_filled.extend(explain_payload.get("filled") or [])
+            staged_missing.extend(explain_payload.get("missing") or [])
+    payload = {"filled": staged_filled, "missing": staged_missing}
     return VisibleControlResult(action=f"fill_{page_key}_page", ok=not payload.get("missing"), payload=payload)
 
 
