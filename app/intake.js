@@ -1,4 +1,114 @@
 const SERVER_BASE = "http://127.0.0.1:8765";
+const OFFLINE_MODE_MESSAGE = "已切换到离线模式：本地服务未连接。你仍然可以上传图片、复制提示词、粘贴模型结果和手动填写。";
+
+const FALLBACK_VISION_MANIFEST = [
+  {
+    kind: "passport_bio",
+    label: "护照资料页",
+    description: "上传中国护照个人信息页清晰照片或扫描件。需要能看清英文姓名、护照号、出生地、性别、签发日期和失效日期。",
+    required: true,
+  },
+  {
+    kind: "trip_proof",
+    label: "赴美行程或邀请材料",
+    description: "上传行程单、邀请函，或一张写明赴美目的、到达日期、停留时长、费用承担方的截图。",
+    required: true,
+  },
+  {
+    kind: "us_contact_proof",
+    label: "美国联系人材料",
+    description: "上传联系人名片、邀请函页，或一张写明姓名、电话、地址、城市、州、邮编、邮箱的截图。",
+    required: true,
+  },
+  {
+    kind: "employment_proof",
+    label: "工作或学校材料",
+    description: "上传在职证明、工作名片、学校证明，或一张写明职业、单位名称、单位地址的截图。",
+    required: true,
+  },
+  {
+    kind: "family_info_sheet",
+    label: "家庭信息材料",
+    description: "上传户口本相关页、结婚证补充页，或一张写明婚姻状态、父母姓名、配偶姓名的截图。",
+    required: true,
+  },
+  {
+    kind: "security_questionnaire",
+    label: "安全背景问卷",
+    description: "上传一张写明“是否有传染病相关情况”“是否有逮捕或犯罪记录”的是/否截图或照片。",
+    required: true,
+  },
+];
+
+const FALLBACK_SCHEMA_DOCUMENT = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "https://local.ds160/intake-v1.schema.json",
+  title: "DS-160 Intake V1",
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    surname: { type: "string", minLength: 1 },
+    given_names: { type: "string", minLength: 1 },
+    native_full_name: { type: ["string", "null"] },
+    sex: { type: "string", enum: ["MALE", "FEMALE"] },
+    marital_status: { type: "string", enum: ["SINGLE", "MARRIED", "DIVORCED", "WIDOWED"] },
+    date_of_birth: { type: "string", format: "date" },
+    birth_city: { type: "string", minLength: 1 },
+    passport_number: { type: "string", minLength: 1 },
+    passport_issue_date: { type: "string", format: "date" },
+    passport_expiration_date: { type: "string", format: "date" },
+    trip_purpose: { type: "string", enum: ["business_tourism", "business", "tourism", "family_visit"] },
+    intended_arrival_date: { type: "string", format: "date" },
+    intended_length_of_stay_value: { type: "string", minLength: 1 },
+    intended_length_of_stay_unit: { type: "string", enum: ["DAYS", "WEEKS", "MONTHS"] },
+    payer_name: { type: "string", minLength: 1 },
+    us_contact_name: { type: "string", minLength: 1 },
+    us_contact_organization: { type: ["string", "null"] },
+    us_contact_phone: { type: "string", minLength: 1 },
+    us_contact_address_line1: { type: "string", minLength: 1 },
+    us_contact_city: { type: "string", minLength: 1 },
+    us_contact_state: { type: "string", minLength: 1 },
+    us_contact_postal_code: { type: "string", minLength: 1 },
+    us_contact_email: { type: ["string", "null"], format: "email" },
+    primary_occupation: { type: "string", enum: ["BUSINESSPERSON", "STUDENT", "OTHER"] },
+    current_employer_name: { type: "string", minLength: 1 },
+    current_employer_address: { type: "string", minLength: 1 },
+    father_full_name: { type: "string", minLength: 1 },
+    mother_full_name: { type: "string", minLength: 1 },
+    spouse_full_name: { type: ["string", "null"] },
+    communicable_disease: { type: "boolean", default: false },
+    arrest_history: { type: "boolean", default: false },
+  },
+  required: [
+    "surname",
+    "given_names",
+    "sex",
+    "marital_status",
+    "date_of_birth",
+    "birth_city",
+    "passport_number",
+    "passport_issue_date",
+    "passport_expiration_date",
+    "trip_purpose",
+    "intended_arrival_date",
+    "intended_length_of_stay_value",
+    "intended_length_of_stay_unit",
+    "payer_name",
+    "us_contact_name",
+    "us_contact_phone",
+    "us_contact_address_line1",
+    "us_contact_city",
+    "us_contact_state",
+    "us_contact_postal_code",
+    "primary_occupation",
+    "current_employer_name",
+    "current_employer_address",
+    "father_full_name",
+    "mother_full_name",
+    "communicable_disease",
+    "arrest_history",
+  ],
+};
 
 const manifestGrid = document.getElementById("manifest-grid");
 const manualForm = document.getElementById("manual-form");
@@ -19,6 +129,7 @@ const state = {
   manifest: [],
   latestJsonText: "",
   schema: null,
+  offlineMode: false,
 };
 
 
@@ -35,6 +146,28 @@ function renderItems(element, items, emptyText, formatter) {
   }
   element.className = "item-list";
   element.innerHTML = items.map(formatter).join("");
+}
+
+
+function activateOfflineMode() {
+  state.offlineMode = true;
+  submitStatus.textContent = OFFLINE_MODE_MESSAGE;
+}
+
+
+function flashButtonSuccess(button, successText, defaultText) {
+  if (!button) {
+    return;
+  }
+  if (button.dataset.resetTimer) {
+    window.clearTimeout(Number(button.dataset.resetTimer));
+  }
+  button.textContent = successText;
+  const timerId = window.setTimeout(() => {
+    button.textContent = defaultText;
+    delete button.dataset.resetTimer;
+  }, 1800);
+  button.dataset.resetTimer = String(timerId);
 }
 
 
@@ -223,7 +356,69 @@ function partialPayloadFromReports(reports) {
 }
 
 
+function renderManifest() {
+  manifestGrid.innerHTML = state.manifest.map(manifestCard).join("");
+  manifestGrid.querySelectorAll("[data-upload-kind]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const note = manifestGrid.querySelector(`[data-note-kind="${input.dataset.uploadKind}"]`);
+      note.textContent = input.files?.[0] ? `已选择：${input.files[0].name}` : "尚未选择文件。";
+    });
+  });
+}
+
+
+async function copyTextToClipboard(text) {
+  if (!text) {
+    throw new Error("没有可复制的内容");
+  }
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Fall back for file:// pages or browsers without clipboard permission.
+    }
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "0";
+  textarea.style.left = "0";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!copied) {
+    throw new Error("当前页面无法直接复制，请手动复制。");
+  }
+}
+
+
+function buildLocalPromptText(documents) {
+  const schemaDocument = state.schema || FALLBACK_SCHEMA_DOCUMENT;
+  const docLines = documents.map((document) => `- ${document.kind}: ${document.filename}`).join("\n") || "- 未选择文件";
+  return [
+    "你是美国签证资料整理助手。请根据我接下来上传的图片，直接返回一个 JSON 对象。",
+    "要求：",
+    "1. 只允许返回 schema 中定义的字段",
+    "2. 不要输出 markdown",
+    "3. 不要输出解释文字",
+    "4. 缺失或无法确认的字段请填 null",
+    "5. 布尔字段必须返回 true 或 false",
+    "",
+    `这次我会上传这些材料：\n${docLines}`,
+    "",
+    `目标 schema:\n${JSON.stringify(schemaDocument, null, 2)}`,
+  ].join("\n");
+}
+
+
 function manifestCard(doc) {
+  const inputId = `upload-${doc.kind}`;
   return `
     <article class="manifest-card" data-kind="${doc.kind}">
       <header>
@@ -237,38 +432,17 @@ function manifestCard(doc) {
       <div class="manifest-meta">
         <span class="token neutral">图片上传</span>
       </div>
-      <input type="file" accept="image/*" data-upload-kind="${doc.kind}" />
-      <div class="manifest-note" data-note-kind="${doc.kind}">尚未选择文件。</div>
+      <div class="upload-control">
+        <input id="${inputId}" class="manifest-file-input" type="file" accept="image/*" data-upload-kind="${doc.kind}" />
+        <label for="${inputId}" class="upload-trigger">选择图片</label>
+        <div class="manifest-note" data-note-kind="${doc.kind}">尚未选择文件。</div>
+      </div>
     </article>
   `;
 }
 
 
-async function loadManifest() {
-  submitStatus.textContent = "页面已准备好。你可以上传材料，也可以直接手动填写。";
-  const res = await fetch(`${SERVER_BASE}/vision-intake/manifest`);
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.detail || "无法读取图片整理清单");
-  }
-  state.manifest = data.documents || [];
-  manifestGrid.innerHTML = state.manifest.map(manifestCard).join("");
-  manifestGrid.querySelectorAll("[data-upload-kind]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const note = manifestGrid.querySelector(`[data-note-kind="${input.dataset.uploadKind}"]`);
-      note.textContent = input.files?.[0] ? `已选择：${input.files[0].name}` : "尚未选择文件。";
-    });
-  });
-}
-
-
-async function loadSchema() {
-  const res = await fetch(`${SERVER_BASE}/intake-schema`);
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.detail || "无法读取资料定义");
-  }
-  state.schema = data.schema_document;
+function validateFormAgainstSchema() {
   const missingFormFields = schemaFieldNames().filter((fieldName) => !manualFormFieldNames().includes(fieldName));
   const extraFormFields = manualFormFieldNames().filter((fieldName) => !schemaFieldNames().includes(fieldName));
   if (missingFormFields.length || extraFormFields.length) {
@@ -288,6 +462,38 @@ async function loadSchema() {
   if (enumMismatchFields.length) {
     throw new Error("表单选项与资料定义不一致，请检查页面配置");
   }
+}
+
+
+async function loadManifest() {
+  try {
+    const res = await fetch(`${SERVER_BASE}/vision-intake/manifest`);
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || "无法读取图片整理清单");
+    }
+    state.manifest = data.documents || [];
+  } catch {
+    state.manifest = FALLBACK_VISION_MANIFEST;
+    activateOfflineMode();
+  }
+  renderManifest();
+}
+
+
+async function loadSchema() {
+  try {
+    const res = await fetch(`${SERVER_BASE}/intake-schema`);
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || "无法读取资料定义");
+    }
+    state.schema = data.schema_document;
+  } catch {
+    state.schema = FALLBACK_SCHEMA_DOCUMENT;
+    activateOfflineMode();
+  }
+  validateFormAgainstSchema();
 }
 
 
@@ -317,6 +523,37 @@ async function collectUploads() {
     });
   }
   return documents;
+}
+
+
+function normalizeModelResult(result) {
+  const payload = {};
+  for (const fieldName of schemaFieldNames()) {
+    const value = result[fieldName];
+    if (value === undefined) {
+      payload[fieldName] = null;
+      continue;
+    }
+    payload[fieldName] = typeof value === "string" ? value.trim() : value;
+  }
+  return payload;
+}
+
+
+function buildLocalValidationResult(result) {
+  const payload = normalizeModelResult(result);
+  const { missing, invalids, extras } = validateManualPayload(payload);
+  const warnings = [
+    ...Object.entries(invalids).map(([fieldName, message]) => `${fieldName}: ${message}`),
+    ...extras.map((fieldName) => `忽略未定义字段：${fieldName}`),
+  ];
+  return {
+    ok: true,
+    intake_document: missing.length || Object.keys(invalids).length ? null : payload,
+    missing_fields: missing.length ? missing : Object.keys(invalids),
+    warnings,
+    documents: [],
+  };
 }
 
 
@@ -379,22 +616,36 @@ async function copyPrompt() {
     if (!documents.length) {
       throw new Error("至少需要上传一份图片材料");
     }
-    const res = await fetch(`${SERVER_BASE}/vision-intake/prompt`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ documents }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || "提示词生成失败");
+    let promptText = "";
+    let usedLocalPrompt = false;
+    try {
+      const res = await fetch(`${SERVER_BASE}/vision-intake/prompt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documents }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "提示词生成失败");
+      }
+      promptText = data.prompt_text;
+    } catch {
+      activateOfflineMode();
+      usedLocalPrompt = true;
+      promptText = buildLocalPromptText(documents);
     }
-    await navigator.clipboard.writeText(data.prompt_text);
-    submitStatus.textContent = "提示词已复制。下一步请去外部大模型上传同样的图片并运行。";
+    await copyTextToClipboard(promptText);
+    flashButtonSuccess(copyPromptButton, "已复制", "一键复制提示词");
+    submitStatus.textContent = usedLocalPrompt
+      ? "提示词已复制。当前使用的是离线提示词，请把同样的图片上传到外部大模型。"
+      : "提示词已复制。下一步请去外部大模型上传同样的图片并运行。";
   } catch (error) {
     submitStatus.textContent = error.message || "提示词复制失败，请稍后再试。";
   } finally {
     copyPromptButton.disabled = false;
-    copyPromptButton.textContent = "一键复制提示词";
+    if (copyPromptButton.textContent === "生成中…") {
+      copyPromptButton.textContent = "一键复制提示词";
+    }
   }
 }
 
@@ -408,14 +659,20 @@ function openResultDialog() {
 async function applyModelResult() {
   try {
     const parsed = JSON.parse(resultInput.value);
-    const res = await fetch(`${SERVER_BASE}/vision-intake/validate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ result: parsed }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || "模型结果处理失败");
+    let data;
+    try {
+      const res = await fetch(`${SERVER_BASE}/vision-intake/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ result: parsed }),
+      });
+      data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "模型结果处理失败");
+      }
+    } catch {
+      activateOfflineMode();
+      data = buildLocalValidationResult(parsed);
     }
     renderExtractionResult(data);
     resultDialog.close();
@@ -498,7 +755,8 @@ async function copyJson() {
     return;
   }
   try {
-    await navigator.clipboard.writeText(state.latestJsonText);
+    await copyTextToClipboard(state.latestJsonText);
+    flashButtonSuccess(copyButton, "已复制", "复制资料内容");
     submitStatus.textContent = "已复制资料内容。下一步去执行页导入即可。";
   } catch {
     submitStatus.textContent = "复制失败，请直接下载资料文件。";

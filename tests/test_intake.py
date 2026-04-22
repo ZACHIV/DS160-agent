@@ -62,6 +62,7 @@ def sample_payload() -> dict[str, object]:
 
 ROOT = Path(__file__).resolve().parents[1]
 INTAKE_HTML = ROOT / "app" / "intake.html"
+INTAKE_JS = ROOT / "app" / "intake.js"
 
 
 class IntakeBuilderTests(unittest.TestCase):
@@ -104,6 +105,23 @@ class IntakeBuilderTests(unittest.TestCase):
         html = INTAKE_HTML.read_text(encoding="utf-8")
         for field_name in required_intake_fields():
             self.assertIn(f'name="{field_name}"', html)
+
+    def test_manifest_cards_include_explicit_upload_trigger(self) -> None:
+        script = INTAKE_JS.read_text(encoding="utf-8")
+        self.assertIn("upload-trigger", script)
+        self.assertIn("选择图片", script)
+
+    def test_clipboard_copy_has_exec_command_fallback(self) -> None:
+        script = INTAKE_JS.read_text(encoding="utf-8")
+        self.assertIn("copyTextToClipboard", script)
+        self.assertIn('document.execCommand("copy")', script)
+
+    def test_static_page_has_local_manifest_and_prompt_fallbacks(self) -> None:
+        script = INTAKE_JS.read_text(encoding="utf-8")
+        self.assertIn("FALLBACK_VISION_MANIFEST", script)
+        self.assertIn("FALLBACK_SCHEMA_DOCUMENT", script)
+        self.assertIn("buildLocalPromptText", script)
+        self.assertIn("已切换到离线模式", script)
 
     def test_invalid_enum_is_rejected_by_contract(self) -> None:
         payload = sample_payload()
