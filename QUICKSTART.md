@@ -60,6 +60,9 @@ source .venv/bin/activate
 PYTHONPATH=src python -m visa_agent.server
 ```
 
+PYTHONPATH=src .venv/bin/python -m visa_agent.server
+
+
 你应该看到：
 ```
 INFO:     Uvicorn running on http://127.0.0.1:8765

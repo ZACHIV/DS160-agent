@@ -10,16 +10,23 @@ from visa_agent.planner import ExecutionPlan, PlannedAction
 PAGE_ORDER = [
     "personal_page_1",
     "travel_page",
-    "employment_page",
-    "family_page",
-    "security_page",
+    "work_education_present_page",
+    "work_education_previous_page",
+    "work_education_additional_page",
+    "family_relatives_page",
+    "family_spouse_page",
+    "security_part1_page",
+    "security_part2_page",
+    "security_part3_page",
+    "security_part4_page",
+    "security_part5_page",
 ]
 
 PAGE_SAVE_CHECKPOINTS = {
     "personal_page_1": "save_after_identity_page",
     "travel_page": "save_after_travel_page",
-    "employment_page": "save_after_employment_page",
-    "security_page": "save_before_security_page",
+    "work_education_present_page": "save_after_employment_page",
+    "security_part5_page": "save_before_security_page",
 }
 
 
@@ -29,11 +36,13 @@ def _page_for_field(field_id: str) -> str:
     if field_id.startswith("travel."):
         return "travel_page"
     if field_id.startswith("employment."):
-        return "employment_page"
+        return "work_education_present_page"
     if field_id.startswith("family."):
-        return "family_page"
+        if field_id == "family.spouse_full_name":
+            return "family_spouse_page"
+        return "family_relatives_page"
     if field_id.startswith("security."):
-        return "security_page"
+        return "security_part1_page"
     return "unmapped_page"
 
 
@@ -130,4 +139,3 @@ def compile_browser_execution_plan(execution_plan: ExecutionPlan) -> BrowserExec
 
 def render_browser_execution_plan_json(plan: BrowserExecutionPlan) -> str:
     return json.dumps(plan.to_dict(), indent=2, ensure_ascii=False)
-

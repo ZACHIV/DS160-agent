@@ -20,6 +20,7 @@ from visa_agent.browser.live_form_fill import (
     fill_current_supported_page,
     save_current_page,
 )
+from visa_agent.page_ids import PAGE_ID_NORMALIZE
 from visa_agent.schema import load_dossier
 
 # ---------------------------------------------------------------------------
@@ -155,20 +156,8 @@ def post_fill_page(req: FillPageRequest):
     # Resolve page_id → canonical key
     page_id = req.page_id
     # Normalize frontend page_id (e.g. "personal_page_1" → "personal1")
-    _NORMALIZE = {
-        "personal_page_1": "personal1",
-        "personal_page_2": "personal2",
-        "passport_page": "passport",
-        "travel_page": "travel",
-        "travel_companions_page": "travel_companions",
-        "previous_travel_page": "previous_travel",
-        "address_phone_page": "address_phone",
-        "employment_page": "employment",
-        "family_page": "family",
-        "security_page": "security",
-    }
     if page_id:
-        canonical = _NORMALIZE.get(page_id, page_id)
+        canonical = PAGE_ID_NORMALIZE.get(page_id, page_id)
     else:
         # Auto-detect from browser URL
         try:

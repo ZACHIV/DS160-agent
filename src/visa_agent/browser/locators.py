@@ -102,7 +102,7 @@ PAGE_LOCATORS: dict[str, dict[str, LocatorSpec]] = {
     # -----------------------------------------------------------------------
     # Employment / Education
     # -----------------------------------------------------------------------
-    "employment_page": {
+    "work_education_present_page": {
         "employment_primary_occupation": LocatorSpec("css", "#ctl00_SiteContentPlaceHolder_FormView1_ddlEmpType", "select"),
         "employment_current_employer_name": LocatorSpec("css", "#ctl00_SiteContentPlaceHolder_FormView1_tbxCURR_EMPL_NAME", "text"),
         "employment_current_employer_addr": LocatorSpec("css", "#ctl00_SiteContentPlaceHolder_FormView1_tbxCURR_EMPL_ADDR1", "text"),
@@ -111,14 +111,15 @@ PAGE_LOCATORS: dict[str, dict[str, LocatorSpec]] = {
     # -----------------------------------------------------------------------
     # Family
     # -----------------------------------------------------------------------
-    "family_page": {
+    "family_relatives_page": {
         "family_father_surname": LocatorSpec("css", "#ctl00_SiteContentPlaceHolder_FormView1_tbxFATHER_SURNAME", "text"),
         "family_father_given_name": LocatorSpec("css", "#ctl00_SiteContentPlaceHolder_FormView1_tbxFATHER_GIVEN_NAME", "text"),
         "family_mother_surname": LocatorSpec("css", "#ctl00_SiteContentPlaceHolder_FormView1_tbxMOTHER_SURNAME", "text"),
         "family_mother_given_name": LocatorSpec("css", "#ctl00_SiteContentPlaceHolder_FormView1_tbxMOTHER_GIVEN_NAME", "text"),
+    },
+    "family_spouse_page": {
         "family_spouse_surname": LocatorSpec("css", "#ctl00_SiteContentPlaceHolder_FormView1_tbxSPOUSE_SURNAME", "text"),
         "family_spouse_given_name": LocatorSpec("css", "#ctl00_SiteContentPlaceHolder_FormView1_tbxSPOUSE_GIVEN_NAME", "text"),
-        "family_us_relative_ind": LocatorSpec("css", "input[name='ctl00$SiteContentPlaceHolder$FormView1$rblUS_EMERGENCY_CONTACT_IND']", "radio", choice_labels={"true": "Y", "false": "N"}),
     },
     # -----------------------------------------------------------------------
     # Security Background

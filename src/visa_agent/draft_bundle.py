@@ -44,16 +44,33 @@ FLOW_STRUCTURE = [
     },
     {"section_id": "passport", "label": "Passport", "pages": [{"page_id": "passport_page", "label": "Passport"}]},
     {"section_id": "us_contact", "label": "U.S. Contact", "pages": [{"page_id": "us_contact_page", "label": "U.S. Contact"}]},
-    {"section_id": "family", "label": "Family", "pages": [{"page_id": "family_page", "label": "Family"}]},
+    {
+        "section_id": "family",
+        "label": "Family",
+        "pages": [
+            {"page_id": "family_relatives_page", "label": "Family: Relatives"},
+            {"page_id": "family_spouse_page", "label": "Family: Spouse"},
+        ],
+    },
     {
         "section_id": "work_education_training",
         "label": "Work / Education / Training",
-        "pages": [{"page_id": "employment_page", "label": "Work / Education / Training"}],
+        "pages": [
+            {"page_id": "work_education_present_page", "label": "Work / Education: Present"},
+            {"page_id": "work_education_previous_page", "label": "Work / Education: Previous"},
+            {"page_id": "work_education_additional_page", "label": "Work / Education: Additional"},
+        ],
     },
     {
         "section_id": "security_background",
         "label": "Security and Background",
-        "pages": [{"page_id": "security_page", "label": "Security and Background"}],
+        "pages": [
+            {"page_id": "security_part1_page", "label": "Security: Part 1"},
+            {"page_id": "security_part2_page", "label": "Security: Part 2"},
+            {"page_id": "security_part3_page", "label": "Security: Part 3"},
+            {"page_id": "security_part4_page", "label": "Security: Part 4"},
+            {"page_id": "security_part5_page", "label": "Security: Part 5"},
+        ],
     },
 ]
 
@@ -77,9 +94,16 @@ PAGE_METADATA = {
     "address_phone_page": {"status": "implemented"},
     "passport_page": {"status": "implemented"},
     "us_contact_page": {"status": "implemented"},
-    "family_page": {"status": "implemented"},
-    "employment_page": {"status": "implemented"},
-    "security_page": {"status": "implemented"},
+    "family_relatives_page": {"status": "implemented"},
+    "family_spouse_page": {"status": "implemented"},
+    "work_education_present_page": {"status": "implemented"},
+    "work_education_previous_page": {"status": "implemented"},
+    "work_education_additional_page": {"status": "implemented"},
+    "security_part1_page": {"status": "implemented"},
+    "security_part2_page": {"status": "implemented"},
+    "security_part3_page": {"status": "implemented"},
+    "security_part4_page": {"status": "implemented"},
+    "security_part5_page": {"status": "implemented"},
 }
 
 
@@ -267,6 +291,56 @@ def build_draft_bundle(dossier: ApplicantDossier) -> dict[str, object]:
         "blocked_count": 1,
         "status": "implemented",
         "notes": ["美国联系人页已建模，当前仍缺联系人电话。"],
+    }
+
+    resolved_pages["work_education_previous_page"] = {
+        "page_id": "work_education_previous_page",
+        "label": "Work / Education: Previous",
+        "save_checkpoint": None,
+        "fill": [
+            {
+                "field_id": "employment.previous_employed",
+                "proposed_value": "NO",
+                "evidence_refs": ["mock:work_education_previous"],
+            },
+            {
+                "field_id": "employment.other_education",
+                "proposed_value": "NO",
+                "evidence_refs": ["mock:work_education_previous"],
+            },
+        ],
+        "review": [],
+        "blocked": [],
+        "autofill_count": 2,
+        "review_count": 0,
+        "blocked_count": 0,
+        "status": "implemented",
+        "notes": ["Previous Work/Education 当前使用保守默认值以验证整页流转。"],
+    }
+
+    resolved_pages["work_education_additional_page"] = {
+        "page_id": "work_education_additional_page",
+        "label": "Work / Education: Additional",
+        "save_checkpoint": None,
+        "fill": [
+            {
+                "field_id": "employment.languages",
+                "proposed_value": "CHINESE",
+                "evidence_refs": ["mock:work_education_additional"],
+            },
+            {
+                "field_id": "employment.additional_background",
+                "proposed_value": "NO",
+                "evidence_refs": ["mock:work_education_additional"],
+            },
+        ],
+        "review": [],
+        "blocked": [],
+        "autofill_count": 2,
+        "review_count": 0,
+        "blocked_count": 0,
+        "status": "implemented",
+        "notes": ["Additional Work/Education 当前使用保守默认值以验证整页流转。"],
     }
 
     resolved_pages["travel_companions_page"] = {

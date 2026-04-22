@@ -6,7 +6,7 @@ window.DS160_DRAFT_BUNDLE = {
       "needs_review": 2,
       "blocked": 1
     },
-    "page_count": 12,
+    "page_count": 19,
     "hard_stops": [
       "stop_on_captcha",
       "stop_on_applicant_signature",
@@ -79,7 +79,7 @@ window.DS160_DRAFT_BUNDLE = {
         {
           "page_id": "travel_companions_page",
           "label": "Travel Companions",
-          "status": "planned"
+          "status": "implemented"
         }
       ]
     },
@@ -90,7 +90,7 @@ window.DS160_DRAFT_BUNDLE = {
         {
           "page_id": "previous_us_travel_page",
           "label": "Previous U.S. Travel",
-          "status": "planned"
+          "status": "implemented"
         }
       ]
     },
@@ -101,7 +101,7 @@ window.DS160_DRAFT_BUNDLE = {
         {
           "page_id": "address_phone_page",
           "label": "Address and Phone",
-          "status": "planned"
+          "status": "implemented"
         }
       ]
     },
@@ -132,8 +132,13 @@ window.DS160_DRAFT_BUNDLE = {
       "label": "Family",
       "pages": [
         {
-          "page_id": "family_page",
-          "label": "Family",
+          "page_id": "family_relatives_page",
+          "label": "Family: Relatives",
+          "status": "implemented"
+        },
+        {
+          "page_id": "family_spouse_page",
+          "label": "Family: Spouse",
           "status": "implemented"
         }
       ]
@@ -143,8 +148,18 @@ window.DS160_DRAFT_BUNDLE = {
       "label": "Work / Education / Training",
       "pages": [
         {
-          "page_id": "employment_page",
-          "label": "Work / Education / Training",
+          "page_id": "work_education_present_page",
+          "label": "Work / Education: Present",
+          "status": "implemented"
+        },
+        {
+          "page_id": "work_education_previous_page",
+          "label": "Work / Education: Previous",
+          "status": "implemented"
+        },
+        {
+          "page_id": "work_education_additional_page",
+          "label": "Work / Education: Additional",
           "status": "implemented"
         }
       ]
@@ -154,8 +169,28 @@ window.DS160_DRAFT_BUNDLE = {
       "label": "Security and Background",
       "pages": [
         {
-          "page_id": "security_page",
-          "label": "Security and Background",
+          "page_id": "security_part1_page",
+          "label": "Security: Part 1",
+          "status": "implemented"
+        },
+        {
+          "page_id": "security_part2_page",
+          "label": "Security: Part 2",
+          "status": "implemented"
+        },
+        {
+          "page_id": "security_part3_page",
+          "label": "Security: Part 3",
+          "status": "implemented"
+        },
+        {
+          "page_id": "security_part4_page",
+          "label": "Security: Part 4",
+          "status": "implemented"
+        },
+        {
+          "page_id": "security_part5_page",
+          "label": "Security: Part 5",
           "status": "implemented"
         }
       ]
@@ -326,14 +361,59 @@ window.DS160_DRAFT_BUNDLE = {
       "page_id": "personal_page_2",
       "label": "Personal 2",
       "save_checkpoint": null,
-      "fill": [],
+      "fill": [
+        {
+          "field_id": "identity.nationality",
+          "proposed_value": "CHINA",
+          "evidence_refs": [
+            "passport_scan"
+          ]
+        },
+        {
+          "field_id": "identity.other_nationality",
+          "proposed_value": "NO",
+          "evidence_refs": [
+            "mock:personal2"
+          ]
+        },
+        {
+          "field_id": "identity.permanent_resident_other_country",
+          "proposed_value": "NO",
+          "evidence_refs": [
+            "mock:personal2"
+          ]
+        },
+        {
+          "field_id": "identity.national_id_number",
+          "proposed_value": "DOES NOT APPLY",
+          "evidence_refs": [
+            "mock:personal2"
+          ]
+        },
+        {
+          "field_id": "identity.us_social_security_number",
+          "proposed_value": "DOES NOT APPLY",
+          "evidence_refs": [
+            "mock:personal2"
+          ]
+        },
+        {
+          "field_id": "identity.us_taxpayer_id_number",
+          "proposed_value": "DOES NOT APPLY",
+          "evidence_refs": [
+            "mock:personal2"
+          ]
+        }
+      ],
       "review": [],
       "blocked": [],
-      "autofill_count": 0,
+      "autofill_count": 6,
       "review_count": 0,
       "blocked_count": 0,
       "status": "implemented",
-      "notes": []
+      "notes": [
+        "Personal 2 已补齐为完整本地草稿。无历史数据时，额外国籍、美国 SSN、美国税号均按 mock 样例处理为不适用。"
+      ]
     },
     {
       "page_id": "travel_page",
@@ -465,45 +545,188 @@ window.DS160_DRAFT_BUNDLE = {
       "page_id": "travel_companions_page",
       "label": "Travel Companions",
       "save_checkpoint": null,
-      "fill": [],
+      "fill": [
+        {
+          "field_id": "travel_companions.has_companions",
+          "proposed_value": "YES",
+          "evidence_refs": [
+            "mock:travel_companions"
+          ]
+        },
+        {
+          "field_id": "travel_companions.primary_companion_surname",
+          "proposed_value": "WANG",
+          "evidence_refs": [
+            "mock:travel_companions"
+          ]
+        },
+        {
+          "field_id": "travel_companions.primary_companion_given_name",
+          "proposed_value": "LI",
+          "evidence_refs": [
+            "mock:travel_companions"
+          ]
+        },
+        {
+          "field_id": "travel_companions.relationship",
+          "proposed_value": "SPOUSE",
+          "evidence_refs": [
+            "mock:travel_companions"
+          ]
+        }
+      ],
       "review": [],
       "blocked": [],
-      "autofill_count": 0,
+      "autofill_count": 4,
       "review_count": 0,
       "blocked_count": 0,
-      "status": "planned",
+      "status": "implemented",
       "notes": [
-        "流程按钮已补齐，本地草稿尚未建模。"
+        "Travel Companions 当前为编造样例：默认与配偶同行，用于本地应用完整演示。"
       ]
     },
     {
       "page_id": "previous_us_travel_page",
       "label": "Previous U.S. Travel",
       "save_checkpoint": null,
-      "fill": [],
+      "fill": [
+        {
+          "field_id": "previous_us_travel.has_previous_us_travel",
+          "proposed_value": "YES",
+          "evidence_refs": [
+            "mock:previous_us_travel"
+          ]
+        },
+        {
+          "field_id": "previous_us_travel.last_arrival_date",
+          "proposed_value": "2024-03-10",
+          "evidence_refs": [
+            "mock:previous_us_travel"
+          ]
+        },
+        {
+          "field_id": "previous_us_travel.last_length_of_stay",
+          "proposed_value": "7 DAYS",
+          "evidence_refs": [
+            "mock:previous_us_travel"
+          ]
+        },
+        {
+          "field_id": "previous_us_travel.has_us_visa_issued",
+          "proposed_value": "YES",
+          "evidence_refs": [
+            "mock:previous_us_travel"
+          ]
+        },
+        {
+          "field_id": "previous_us_travel.visa_number",
+          "proposed_value": "000123456789",
+          "evidence_refs": [
+            "mock:previous_us_travel"
+          ]
+        }
+      ],
       "review": [],
       "blocked": [],
-      "autofill_count": 0,
+      "autofill_count": 5,
       "review_count": 0,
       "blocked_count": 0,
-      "status": "planned",
+      "status": "implemented",
       "notes": [
-        "流程按钮已补齐，本地草稿尚未建模。"
+        "Previous U.S. Travel 当前为编造样例，用于消除本地应用中的占位页。"
       ]
     },
     {
       "page_id": "address_phone_page",
       "label": "Address and Phone",
       "save_checkpoint": null,
-      "fill": [],
+      "fill": [
+        {
+          "field_id": "address.home_address_line1",
+          "proposed_value": "88 Huaihai Middle Road",
+          "evidence_refs": [
+            "mock:address_phone"
+          ]
+        },
+        {
+          "field_id": "address.city",
+          "proposed_value": "Shanghai",
+          "evidence_refs": [
+            "mock:address_phone"
+          ]
+        },
+        {
+          "field_id": "address.state_province",
+          "proposed_value": "Shanghai",
+          "evidence_refs": [
+            "mock:address_phone"
+          ]
+        },
+        {
+          "field_id": "address.postal_code",
+          "proposed_value": "200021",
+          "evidence_refs": [
+            "mock:address_phone"
+          ]
+        },
+        {
+          "field_id": "address.country",
+          "proposed_value": "CHINA",
+          "evidence_refs": [
+            "mock:address_phone"
+          ]
+        },
+        {
+          "field_id": "phone.primary_phone",
+          "proposed_value": "+86-21-5555-8800",
+          "evidence_refs": [
+            "mock:address_phone"
+          ]
+        },
+        {
+          "field_id": "phone.secondary_phone",
+          "proposed_value": "DOES NOT APPLY",
+          "evidence_refs": [
+            "mock:address_phone"
+          ]
+        },
+        {
+          "field_id": "phone.work_phone",
+          "proposed_value": "+86-21-6888-9900",
+          "evidence_refs": [
+            "mock:address_phone"
+          ]
+        },
+        {
+          "field_id": "phone.email",
+          "proposed_value": "zhang.wei@example.cn",
+          "evidence_refs": [
+            "mock:address_phone"
+          ]
+        },
+        {
+          "field_id": "social.primary_platform",
+          "proposed_value": "WECHAT",
+          "evidence_refs": [
+            "mock:address_phone"
+          ]
+        },
+        {
+          "field_id": "social.primary_handle",
+          "proposed_value": "zhangwei_cn",
+          "evidence_refs": [
+            "mock:address_phone"
+          ]
+        }
+      ],
       "review": [],
       "blocked": [],
-      "autofill_count": 0,
+      "autofill_count": 11,
       "review_count": 0,
       "blocked_count": 0,
-      "status": "planned",
+      "status": "implemented",
       "notes": [
-        "流程按钮已补齐，本地草稿尚未建模。"
+        "Address and Phone 当前为编造样例，用于本地应用完整演示。"
       ]
     },
     {
@@ -625,8 +848,8 @@ window.DS160_DRAFT_BUNDLE = {
       ]
     },
     {
-      "page_id": "family_page",
-      "label": "Family",
+      "page_id": "family_relatives_page",
+      "label": "Family: Relatives",
       "save_checkpoint": null,
       "fill": [
         {
@@ -659,8 +882,21 @@ window.DS160_DRAFT_BUNDLE = {
       "notes": []
     },
     {
-      "page_id": "employment_page",
-      "label": "Work / Education / Training",
+      "page_id": "family_spouse_page",
+      "label": "Family: Spouse",
+      "save_checkpoint": null,
+      "fill": [],
+      "review": [],
+      "blocked": [],
+      "autofill_count": 0,
+      "review_count": 0,
+      "blocked_count": 0,
+      "status": "implemented",
+      "notes": []
+    },
+    {
+      "page_id": "work_education_present_page",
+      "label": "Work / Education: Present",
       "save_checkpoint": "save_after_employment_page",
       "fill": [
         {
@@ -693,9 +929,69 @@ window.DS160_DRAFT_BUNDLE = {
       "notes": []
     },
     {
-      "page_id": "security_page",
-      "label": "Security and Background",
-      "save_checkpoint": "save_before_security_page",
+      "page_id": "work_education_previous_page",
+      "label": "Work / Education: Previous",
+      "save_checkpoint": null,
+      "fill": [
+        {
+          "field_id": "employment.previous_employed",
+          "proposed_value": "NO",
+          "evidence_refs": [
+            "mock:work_education_previous"
+          ]
+        },
+        {
+          "field_id": "employment.other_education",
+          "proposed_value": "NO",
+          "evidence_refs": [
+            "mock:work_education_previous"
+          ]
+        }
+      ],
+      "review": [],
+      "blocked": [],
+      "autofill_count": 2,
+      "review_count": 0,
+      "blocked_count": 0,
+      "status": "implemented",
+      "notes": [
+        "Previous Work/Education 当前使用保守默认值以验证整页流转。"
+      ]
+    },
+    {
+      "page_id": "work_education_additional_page",
+      "label": "Work / Education: Additional",
+      "save_checkpoint": null,
+      "fill": [
+        {
+          "field_id": "employment.languages",
+          "proposed_value": "CHINESE",
+          "evidence_refs": [
+            "mock:work_education_additional"
+          ]
+        },
+        {
+          "field_id": "employment.additional_background",
+          "proposed_value": "NO",
+          "evidence_refs": [
+            "mock:work_education_additional"
+          ]
+        }
+      ],
+      "review": [],
+      "blocked": [],
+      "autofill_count": 2,
+      "review_count": 0,
+      "blocked_count": 0,
+      "status": "implemented",
+      "notes": [
+        "Additional Work/Education 当前使用保守默认值以验证整页流转。"
+      ]
+    },
+    {
+      "page_id": "security_part1_page",
+      "label": "Security: Part 1",
+      "save_checkpoint": null,
       "fill": [
         {
           "action_type": "fill",
@@ -721,6 +1017,58 @@ window.DS160_DRAFT_BUNDLE = {
       "review": [],
       "blocked": [],
       "autofill_count": 2,
+      "review_count": 0,
+      "blocked_count": 0,
+      "status": "implemented",
+      "notes": []
+    },
+    {
+      "page_id": "security_part2_page",
+      "label": "Security: Part 2",
+      "save_checkpoint": null,
+      "fill": [],
+      "review": [],
+      "blocked": [],
+      "autofill_count": 0,
+      "review_count": 0,
+      "blocked_count": 0,
+      "status": "implemented",
+      "notes": []
+    },
+    {
+      "page_id": "security_part3_page",
+      "label": "Security: Part 3",
+      "save_checkpoint": null,
+      "fill": [],
+      "review": [],
+      "blocked": [],
+      "autofill_count": 0,
+      "review_count": 0,
+      "blocked_count": 0,
+      "status": "implemented",
+      "notes": []
+    },
+    {
+      "page_id": "security_part4_page",
+      "label": "Security: Part 4",
+      "save_checkpoint": null,
+      "fill": [],
+      "review": [],
+      "blocked": [],
+      "autofill_count": 0,
+      "review_count": 0,
+      "blocked_count": 0,
+      "status": "implemented",
+      "notes": []
+    },
+    {
+      "page_id": "security_part5_page",
+      "label": "Security: Part 5",
+      "save_checkpoint": null,
+      "fill": [],
+      "review": [],
+      "blocked": [],
+      "autofill_count": 0,
       "review_count": 0,
       "blocked_count": 0,
       "status": "implemented",
