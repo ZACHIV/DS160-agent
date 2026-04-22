@@ -104,6 +104,39 @@ body {
   margin-top: 28px;
 }
 
+.import-card {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 12px;
+}
+
+.upload-field {
+  display: grid;
+  gap: 8px;
+}
+
+.upload-field input[type="file"] {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.6);
+  padding: 10px;
+  font: inherit;
+}
+
+.wide {
+  width: 100%;
+}
+
+.import-status {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .summary {
   display: grid;
   gap: 10px;

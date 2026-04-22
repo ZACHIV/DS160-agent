@@ -1,10 +1,11 @@
 const SERVER_BASE = "http://127.0.0.1:8765";
 
-const bundle = window.DS160_DRAFT_BUNDLE;
 const state = {
-  currentPageId: bundle.pages[0]?.page_id || null,
+  bundle: null,
+  currentPageId: null,
   completed: {},
   serverConnected: false,
+  intakeLoaded: false,
 };
 
 const topSteps = document.getElementById("top-steps");
@@ -22,30 +23,79 @@ const fillResult = document.getElementById("fill-result");
 const fillButton = document.getElementById("fill-page");
 const saveButton = document.getElementById("save-page");
 const resetButton = document.getElementById("reset-page");
+const intakeFile = document.getElementById("intake-file");
+const loadIntakeButton = document.getElementById("load-intake");
+const intakeDocStatus = document.getElementById("intake-doc-status");
 
-function getPage(pageId) {
-  return bundle.pages.find((page) => page.page_id === pageId);
+
+function currentBundle() {
+  return state.bundle;
 }
 
+
+function getPage(pageId) {
+  return currentBundle()?.pages.find((page) => page.page_id === pageId);
+}
+
+
+function showFillResult(ok, message, detail) {
+  fillResult.style.display = "block";
+  fillResult.className = "fill-result " + (ok ? "fill-ok" : "fill-err");
+  fillResult.innerHTML = `<strong>${message}</strong>${detail ? `<div class="fill-detail">${detail}</div>` : ""}`;
+  clearTimeout(fillResult._timer);
+  if (ok) {
+    fillResult._timer = setTimeout(() => {
+      fillResult.style.display = "none";
+    }, 5000);
+  }
+}
+
+
+function renderEmptyState() {
+  summary.innerHTML = `
+    <div class="summary-card">
+      <span class="eyebrow">状态</span>
+      <strong>等待导入资料文件</strong>
+    </div>
+  `;
+  pageNav.innerHTML = `
+    <section class="flow-section">
+      <div class="flow-section-title">先导入资料</div>
+      <div class="summary-card">导入采集页生成的资料文件后，系统才会生成当前申请的页面清单。</div>
+    </section>
+  `;
+  pageTitle.textContent = "等待资料";
+  metricFill.textContent = "0";
+  metricReview.textContent = "0";
+  metricBlocked.textContent = "0";
+  fieldList.innerHTML = `<article class="field-card"><header><strong>执行器未激活</strong><span class="token planned">等待导入</span></header><div class="field-meta">这个页面只负责执行填表，不能直接采集申请资料。</div></article>`;
+  reviewList.innerHTML = `<article class="review-card"><strong>导入资料文件后，这里会显示需要确认或补充的内容。</strong></article>`;
+  notesList.innerHTML = `<article class="review-card"><strong>建议先在采集页整理资料，再回到这里导入。</strong></article>`;
+}
+
+
 function renderSummary() {
+  const bundle = currentBundle();
   const { status_counts: counts, page_count: pages, hard_stops: hardStops } = bundle.summary;
   summary.innerHTML = `
     <div class="summary-card">
-      <span class="eyebrow">Case</span>
+      <span class="eyebrow">申请</span>
       <strong>${bundle.case_id}</strong>
     </div>
     <div class="summary-card">
-      <span class="eyebrow">Ready / Review / Blocked</span>
+      <span class="eyebrow">可填 / 待确认 / 缺失</span>
       <strong>${counts.ready} / ${counts.needs_review} / ${counts.blocked}</strong>
     </div>
     <div class="summary-card">
-      <span class="eyebrow">Flow Pages / Hard Stops</span>
+      <span class="eyebrow">页面数 / 停止点</span>
       <strong>${pages} / ${hardStops.length}</strong>
     </div>
   `;
 }
 
+
 function renderTopSteps() {
+  const bundle = currentBundle();
   topSteps.innerHTML = bundle.top_steps
     .map((step, index) => {
       const active = index === 0 ? "active" : "";
@@ -54,7 +104,9 @@ function renderTopSteps() {
     .join("");
 }
 
+
 function renderNav() {
+  const bundle = currentBundle();
   pageNav.innerHTML = bundle.navigation
     .map((section) => {
       const buttons = section.pages
@@ -88,6 +140,7 @@ function renderNav() {
   });
 }
 
+
 function renderFields(page) {
   metricFill.textContent = page.autofill_count;
   metricReview.textContent = page.review_count;
@@ -100,16 +153,17 @@ function renderFields(page) {
             <article class="field-card">
               <header>
                 <strong>${item.field_id}</strong>
-                <span class="token fill">AUTOFILL</span>
+                <span class="token fill">自动填入</span>
               </header>
               <div class="field-value">${item.proposed_value ?? "<empty>"}</div>
-              <div class="field-meta">Evidence: ${(item.evidence_refs || []).join(", ") || "n/a"}</div>
+              <div class="field-meta">来源：${(item.evidence_refs || []).join(", ") || "未标注"}</div>
             </article>
           `
         )
         .join("")
-    : `<article class="field-card"><header><strong>${page.label}</strong><span class="token planned">${page.status === "planned" ? "PENDING" : "REFERENCE"}</span></header><div class="field-meta">当前页还没有本地草稿字段，但导航和状态已经对齐正式 DS-160 流程。</div></article>`;
+    : `<article class="field-card"><header><strong>${page.label}</strong><span class="token planned">${page.status === "planned" ? "待补充" : "参考页"}</span></header><div class="field-meta">当前页暂时没有可直接填入的资料。</div></article>`;
 }
+
 
 function renderReview(page) {
   const items = [
@@ -125,16 +179,17 @@ function renderReview(page) {
               <header>
                 <strong>${item.field_id}</strong>
                 <span class="token ${item.kind === "review" ? "review" : "blocked"}">
-                  ${item.kind === "review" ? "REVIEW" : "BLOCKED"}
+                  ${item.kind === "review" ? "待确认" : "缺失"}
                 </span>
               </header>
-              <div class="review-note">${item.notes || "No note."}</div>
+              <div class="review-note">${item.notes || "需要人工处理。"}</div>
             </article>
           `
         )
         .join("")
     : `<article class="review-card"><strong>当前页没有 review / blocked 项。</strong></article>`;
 }
+
 
 function renderNotes(page) {
   const notes = page.notes || [];
@@ -155,7 +210,12 @@ function renderNotes(page) {
     : `<article class="review-card"><strong>当前页没有额外说明。</strong></article>`;
 }
 
+
 function render() {
+  if (!currentBundle()) {
+    renderEmptyState();
+    return;
+  }
   const page = getPage(state.currentPageId);
   if (!page) return;
   pageTitle.textContent = `${page.label}${state.completed[page.page_id] ? " · 已完成预填" : ""}`;
@@ -167,19 +227,19 @@ function render() {
   renderNotes(page);
 }
 
-// ---------------------------------------------------------------------------
-// Server connection
-// ---------------------------------------------------------------------------
 
-function showFillResult(ok, message, detail) {
-  fillResult.style.display = "block";
-  fillResult.className = "fill-result " + (ok ? "fill-ok" : "fill-err");
-  fillResult.innerHTML = `<strong>${message}</strong>${detail ? `<div class="fill-detail">${detail}</div>` : ""}`;
-  clearTimeout(fillResult._timer);
-  if (ok) {
-    fillResult._timer = setTimeout(() => { fillResult.style.display = "none"; }, 5000);
+async function fetchBundle() {
+  const res = await fetch(`${SERVER_BASE}/draft-bundle`, { signal: AbortSignal.timeout(3000) });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.detail || "无法构建 draft bundle");
   }
+  state.bundle = data.bundle;
+  state.currentPageId = data.bundle.pages[0]?.page_id || null;
+  state.completed = {};
+  render();
 }
+
 
 async function checkServerStatus() {
   try {
@@ -187,6 +247,7 @@ async function checkServerStatus() {
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     state.serverConnected = data.connected;
+    state.intakeLoaded = Boolean(data.intake_loaded);
     if (!data.connected) {
       serverStatus.textContent = "未连接浏览器";
       serverStatus.style.color = "var(--c-warn, #f5a623)";
@@ -197,6 +258,12 @@ async function checkServerStatus() {
       serverStatus.textContent = "已连接 ✓";
       serverStatus.style.color = "var(--c-ok, #6fcf97)";
     }
+    if (data.intake_loaded) {
+      intakeDocStatus.textContent = "资料文件已载入。";
+      if (!currentBundle()) {
+        await fetchBundle();
+      }
+    }
   } catch {
     state.serverConnected = false;
     serverStatus.textContent = "服务未启动";
@@ -204,11 +271,49 @@ async function checkServerStatus() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Fill / Save actions
-// ---------------------------------------------------------------------------
+
+async function loadIntakeDocument() {
+  const file = intakeFile.files?.[0];
+  if (!file) {
+    showFillResult(false, "缺少文件", "请选择一份 intake-v1 JSON 文档。");
+    return;
+  }
+  loadIntakeButton.disabled = true;
+  loadIntakeButton.textContent = "导入中…";
+  intakeDocStatus.textContent = `正在载入 ${file.name} …`;
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    const res = await fetch(`${SERVER_BASE}/intake-document`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || "导入 intake 文档失败");
+    }
+      intakeDocStatus.textContent = `${file.name} 已导入。`;
+    await fetchBundle();
+    showFillResult(true, "导入成功", "已根据 intake JSON 构建执行 bundle。");
+  } catch (error) {
+    showFillResult(false, "导入失败", error.message || "请检查 JSON 格式");
+    intakeDocStatus.textContent = "导入失败，请检查 schema 和服务状态。";
+  } finally {
+    loadIntakeButton.disabled = false;
+    loadIntakeButton.textContent = "导入 intake JSON";
+    checkServerStatus();
+  }
+}
+
+
+loadIntakeButton.addEventListener("click", loadIntakeDocument);
 
 fillButton.addEventListener("click", async () => {
+  if (!currentBundle()) {
+    showFillResult(false, "尚未导入资料", "请先导入采集页生成的资料文件。");
+    return;
+  }
   fillButton.disabled = true;
   fillButton.textContent = "填入中…";
   try {
@@ -226,7 +331,7 @@ fillButton.addEventListener("click", async () => {
       const msg = data.detail || data.message || "填入失败";
       showFillResult(false, "填入失败", msg);
     }
-  } catch (err) {
+  } catch {
     showFillResult(false, "网络错误", "请确认本地服务已启动：python -m visa_agent.server");
   } finally {
     fillButton.disabled = false;
@@ -235,6 +340,7 @@ fillButton.addEventListener("click", async () => {
   }
 });
 
+
 saveButton.addEventListener("click", async () => {
   saveButton.disabled = true;
   saveButton.textContent = "保存中…";
@@ -242,7 +348,7 @@ saveButton.addEventListener("click", async () => {
     const res = await fetch(`${SERVER_BASE}/save-page`, { method: "POST" });
     const data = await res.json();
     showFillResult(data.ok, data.ok ? "保存成功" : "保存按钮未找到", JSON.stringify(data.payload || {}));
-  } catch (err) {
+  } catch {
     showFillResult(false, "网络错误", "请确认本地服务已启动");
   } finally {
     saveButton.disabled = false;
@@ -250,14 +356,14 @@ saveButton.addEventListener("click", async () => {
   }
 });
 
+
 resetButton.addEventListener("click", () => {
   delete state.completed[state.currentPageId];
   fillResult.style.display = "none";
   render();
 });
 
-// Poll server status every 5 seconds
+
 checkServerStatus();
 setInterval(checkServerStatus, 5000);
-
 render();

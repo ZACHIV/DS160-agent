@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DS-160 Intake</title>
+    <link rel="stylesheet" href="./intake.css" />
+  </head>
+  <body>
+    <div class="backdrop"></div>
+    <main class="shell">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">China B1/B2 Intake</p>
+          <h1>上传材料或手动填写，都可以生成申请资料。</h1>
+          <p class="lede">
+            这一步只负责整理申请资料。你可以选择上传图片走 OCR，也可以保留手动填写。无论哪种方式，最后都会生成同一份申请资料文件，再交给执行页导入。
+          </p>
+          <div class="hero-strip">
+            <div>
+              <span>采集方式</span>
+              <strong>OCR + 手填并行</strong>
+            </div>
+            <div>
+              <span>边界</span>
+              <strong>只负责采集</strong>
+            </div>
+            <div>
+              <span>输出</span>
+              <strong>统一申请资料</strong>
+            </div>
+          </div>
+        </div>
+        <aside class="hero-aside">
+          <div class="aside-card">
+            <span class="aside-kicker">How To Use</span>
+            <ol>
+              <li>先看下方 6 类材料清单。</li>
+              <li>材料齐全时优先用 OCR，省去大部分手填。</li>
+              <li>OCR 缺字段时，可以直接在手填区补全。</li>
+              <li>生成资料后，再去执行页导入同一份文件。</li>
+            </ol>
+          </div>
+        </aside>
+      </section>
+
+      <section class="workspace">
+        <section class="intake-form">
+          <div class="form-group">
+            <div class="group-head">
+              <p class="eyebrow">01 Upload Checklist</p>
+              <h2>请准备这 6 类材料</h2>
+            </div>
+            <div class="upload-list">
+              <article class="upload-list-item">
+                <strong>1. 护照资料页</strong>
+                <span>清晰照片或扫描件，要能看清英文姓名、护照号、出生地、性别、签发日期和失效日期。</span>
+              </article>
+              <article class="upload-list-item">
+                <strong>2. 赴美行程或邀请材料</strong>
+                <span>行程单、邀请函，或者一张写明赴美目的、到达日期、停留时长、费用承担方的截图。</span>
+              </article>
+              <article class="upload-list-item">
+                <strong>3. 美国联系人材料</strong>
+                <span>联系人名片、邀请函页，或者一张写明姓名、电话、地址、城市、州、邮编、邮箱的截图。</span>
+              </article>
+              <article class="upload-list-item">
+                <strong>4. 工作或学校材料</strong>
+                <span>在职证明、工作名片、学校证明，或者一张写明职业、单位名称、单位地址的截图。</span>
+              </article>
+              <article class="upload-list-item">
+                <strong>5. 家庭信息材料</strong>
+                <span>户口本相关页、结婚证补充页，或者一张写明父母姓名、配偶姓名、婚姻状态的截图。</span>
+              </article>
+              <article class="upload-list-item">
+                <strong>6. 安全背景问卷</strong>
+                <span>一张写明“是否有传染病相关情况”“是否有逮捕或犯罪记录”的是/否截图或照片。</span>
+              </article>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <div class="group-head">
+              <p class="eyebrow">02 OCR Upload</p>
+              <h2>上传图片自动提取</h2>
+            </div>
+            <div id="manifest-grid" class="manifest-grid"></div>
+            <div class="form-actions compact">
+              <button id="run-ocr" type="button" class="primary">用上传材料自动整理</button>
+            </div>
+          </div>
+
+          <form id="manual-form" class="form-group">
+            <div class="group-head">
+              <p class="eyebrow">03 Manual Entry</p>
+              <h2>也可以直接手动填写</h2>
+            </div>
+            <div class="grid two">
+              <label>
+                <span>护照英文姓</span>
+                <input name="surname" required placeholder="ZHANG" />
+                <small class="field-hint" data-hint-for="surname"></small>
+              </label>
+              <label>
+                <span>护照英文名</span>
+                <input name="given_names" required placeholder="WEI" />
+                <small class="field-hint" data-hint-for="given_names"></small>
+              </label>
+              <label class="full">
+                <span>中文姓名</span>
+                <input name="native_full_name" placeholder="张伟" />
+                <small class="field-hint" data-hint-for="native_full_name"></small>
+              </label>
+              <label>
+                <span>性别</span>
+                <select name="sex" required>
+                  <option value="MALE">男</option>
+                  <option value="FEMALE">女</option>
+                </select>
+                <small class="field-hint" data-hint-for="sex"></small>
+              </label>
+              <label>
+                <span>婚姻状态</span>
+                <select name="marital_status" required>
+                  <option value="SINGLE">未婚</option>
+                  <option value="MARRIED">已婚</option>
+                  <option value="DIVORCED">离婚</option>
+                  <option value="WIDOWED">丧偶</option>
+                </select>
+                <small class="field-hint" data-hint-for="marital_status"></small>
+              </label>
+              <label>
+                <span>出生日期</span>
+                <input type="date" name="date_of_birth" required />
+                <small class="field-hint" data-hint-for="date_of_birth"></small>
+              </label>
+              <label>
+                <span>出生城市</span>
+                <input name="birth_city" required placeholder="Shanghai" />
+                <small class="field-hint" data-hint-for="birth_city"></small>
+              </label>
+              <label>
+                <span>护照号码</span>
+                <input name="passport_number" required placeholder="E12345678" />
+                <small class="field-hint" data-hint-for="passport_number"></small>
+              </label>
+              <label>
+                <span>护照签发日期</span>
+                <input type="date" name="passport_issue_date" required />
+                <small class="field-hint" data-hint-for="passport_issue_date"></small>
+              </label>
+              <label>
+                <span>护照失效日期</span>
+                <input type="date" name="passport_expiration_date" required />
+                <small class="field-hint" data-hint-for="passport_expiration_date"></small>
+              </label>
+              <label>
+                <span>赴美目的</span>
+                <select name="trip_purpose" required>
+                  <option value="business_tourism">商务 + 旅游</option>
+                  <option value="business">商务</option>
+                  <option value="tourism">旅游</option>
+                  <option value="family_visit">探亲访友</option>
+                </select>
+                <small class="field-hint" data-hint-for="trip_purpose"></small>
+              </label>
+              <label>
+                <span>预计到达日期</span>
+                <input type="date" name="intended_arrival_date" required />
+                <small class="field-hint" data-hint-for="intended_arrival_date"></small>
+              </label>
+              <label>
+                <span>停留时长</span>
+                <div class="inline-pair">
+                  <input name="intended_length_of_stay_value" required placeholder="12" />
+                  <select name="intended_length_of_stay_unit" required>
+                    <option value="DAYS">天</option>
+                    <option value="WEEKS">周</option>
+                    <option value="MONTHS">月</option>
+                  </select>
+                </div>
+                <small class="field-hint" data-hint-for="intended_length_of_stay_value"></small>
+                <small class="field-hint" data-hint-for="intended_length_of_stay_unit"></small>
+              </label>
+              <label>
+                <span>费用承担方</span>
+                <input name="payer_name" required placeholder="Shanghai Example Trading Co., Ltd." />
+                <small class="field-hint" data-hint-for="payer_name"></small>
+              </label>
+              <label>
+                <span>美国联系人姓名</span>
+                <input name="us_contact_name" required placeholder="Michael Chen" />
+                <small class="field-hint" data-hint-for="us_contact_name"></small>
+              </label>
+              <label>
+                <span>机构名称</span>
+                <input name="us_contact_organization" placeholder="Example US Imports" />
+                <small class="field-hint" data-hint-for="us_contact_organization"></small>
+              </label>
+              <label>
+                <span>联系电话</span>
+                <input name="us_contact_phone" required placeholder="+1 415 555 0187" />
+                <small class="field-hint" data-hint-for="us_contact_phone"></small>
+              </label>
+              <label class="full">
+                <span>联系人地址</span>
+                <input name="us_contact_address_line1" required placeholder="500 Market Street" />
+                <small class="field-hint" data-hint-for="us_contact_address_line1"></small>
+              </label>
+              <label>
+                <span>城市</span>
+                <input name="us_contact_city" required placeholder="San Francisco" />
+                <small class="field-hint" data-hint-for="us_contact_city"></small>
+              </label>
+              <label>
+                <span>州</span>
+                <input name="us_contact_state" required placeholder="California" />
+                <small class="field-hint" data-hint-for="us_contact_state"></small>
+              </label>
+              <label>
+                <span>邮编</span>
+                <input name="us_contact_postal_code" required placeholder="94105" />
+                <small class="field-hint" data-hint-for="us_contact_postal_code"></small>
+              </label>
+              <label>
+                <span>邮箱</span>
+                <input type="email" name="us_contact_email" placeholder="mchen@example.com" />
+                <small class="field-hint" data-hint-for="us_contact_email"></small>
+              </label>
+              <label>
+                <span>当前职业</span>
+                <select name="primary_occupation" required>
+                  <option value="BUSINESSPERSON">企业人员</option>
+                  <option value="STUDENT">学生</option>
+                  <option value="OTHER">其他</option>
+                </select>
+                <small class="field-hint" data-hint-for="primary_occupation"></small>
+              </label>
+              <label>
+                <span>当前单位</span>
+                <input name="current_employer_name" required placeholder="Shanghai Example Trading Co., Ltd." />
+                <small class="field-hint" data-hint-for="current_employer_name"></small>
+              </label>
+              <label class="full">
+                <span>单位地址</span>
+                <input name="current_employer_address" required placeholder="88 Huaihai Middle Road, Shanghai, China" />
+                <small class="field-hint" data-hint-for="current_employer_address"></small>
+              </label>
+              <label>
+                <span>父亲姓名</span>
+                <input name="father_full_name" required placeholder="ZHANG JIANGUO" />
+                <small class="field-hint" data-hint-for="father_full_name"></small>
+              </label>
+              <label>
+                <span>母亲姓名</span>
+                <input name="mother_full_name" required placeholder="LI HUA" />
+                <small class="field-hint" data-hint-for="mother_full_name"></small>
+              </label>
+              <label>
+                <span>配偶姓名</span>
+                <input name="spouse_full_name" placeholder="未婚可留空" />
+                <small class="field-hint" data-hint-for="spouse_full_name"></small>
+              </label>
+            </div>
+            <div class="security-grid">
+              <label class="toggle">
+                <span>是否有传染病相关情况</span>
+                <input type="checkbox" name="communicable_disease" />
+                <small class="field-hint" data-hint-for="communicable_disease"></small>
+              </label>
+              <label class="toggle">
+                <span>是否有逮捕或犯罪记录</span>
+                <input type="checkbox" name="arrest_history" />
+                <small class="field-hint" data-hint-for="arrest_history"></small>
+              </label>
+            </div>
+            <div class="form-actions compact">
+              <button id="manual-submit" type="submit" class="primary">用手填内容整理</button>
+            </div>
+          </form>
+
+          <div class="form-actions">
+            <div class="action-row">
+              <button id="download-json" type="button" class="ghost">下载资料文件</button>
+              <button id="copy-json" type="button" class="ghost">复制资料内容</button>
+            </div>
+            <p id="submit-status" class="submit-status">你可以先尝试 OCR；如果识别不全，再在手填区补齐。</p>
+          </div>
+        </section>
+
+        <aside class="preview-pane">
+          <div class="preview-head">
+            <p class="eyebrow">Result</p>
+            <h2>整理结果</h2>
+            <p>这里显示缺失项、提醒，以及最终生成的申请资料内容。</p>
+          </div>
+
+          <section class="preview-card">
+            <header>
+              <h3>缺失字段</h3>
+            </header>
+            <div id="missing-fields" class="item-list empty">完成整理后显示。</div>
+          </section>
+
+          <section class="preview-card">
+            <header>
+              <h3>提醒</h3>
+            </header>
+            <div id="ocr-warnings" class="item-list empty">完成整理后显示。</div>
+          </section>
+
+          <section class="preview-card">
+            <header>
+              <h3>上传材料处理情况</h3>
+            </header>
+            <div id="document-reports" class="item-list empty">使用 OCR 时显示。</div>
+          </section>
+
+          <section class="preview-card">
+            <header>
+              <h3>申请资料预览</h3>
+            </header>
+            <pre id="json-preview" class="code-block">生成成功后，这里会出现可导入执行页的资料内容。</pre>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <script src="./intake.js"></script>
+  </body>
+</html>

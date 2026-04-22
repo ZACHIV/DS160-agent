@@ -26,6 +26,14 @@ source .venv/bin/activate
 pip install fastapi uvicorn
 ```
 
+如果要使用 OCR 采集，额外建议配置：
+
+```bash
+export OCR_SPACE_API_KEY=你的免费key
+```
+
+默认会回退到 `helloworld`，只适合开发联调。
+
 ## 启动流程
 
 ### 第 1 步：启动 Chrome（开启远程调试）
@@ -68,14 +76,23 @@ PYTHONPATH=src .venv/bin/python -m visa_agent.server
 INFO:     Uvicorn running on http://127.0.0.1:8765
 ```
 
-### 第 3 步：打开前端网页
+### 第 3 步：先用 OCR 生成 intake JSON
 
 在浏览器中打开：
+```
+file:///home/zhangzheng/0_platform/personal/idea/amercican_visa/app/intake.html
+```
+
+按页面清单上传图片，点击“开始 OCR 采集”。如果右侧没有缺失字段，就下载生成的 `intake-v1` JSON。
+
+### 第 4 步：打开执行器并导入同一份 JSON
+
+然后打开：
 ```
 file:///home/zhangzheng/0_platform/personal/idea/amercican_visa/app/ds160-assistant.html
 ```
 
-或直接点击 Chrome 浏览器的地址栏，输入上述路径。
+在左侧导入刚才生成的 `intake-v1` JSON。执行器会基于这同一份文档构建本地 draft bundle。
 
 ## 使用说明
 
@@ -86,18 +103,21 @@ file:///home/zhangzheng/0_platform/personal/idea/amercican_visa/app/ds160-assist
    - 🟡 **已连接 (无DS-160标签)** - 服务运行，但 Chrome 未打开 DS-160 表单
    - 🔴 **服务未启动** - 本地服务未运行
 
-2. **一键填入当前页** - 点击自动填写当前 DS-160 页面的所有字段
-3. **保存当前页** - 点击保存按钮保存当前页进度
-4. **重置标记** - 清除页面完成标记
+2. **导入 intake JSON** - 执行器不采集用户资料，只导入统一 JSON 文档
+3. **一键填入当前页** - 点击自动填写当前 DS-160 页面的所有字段
+4. **保存当前页** - 点击保存按钮保存当前页进度
+5. **重置标记** - 清除页面完成标记
 
 ### 工作流程
 
-1. 在 Chrome 中导航到 DS-160 表单页面
-2. 前端自动检测当前页面（左侧导航显示当前页面名称）
-3. 点击"一键填入当前页"按钮
-4. 等待 1-2 秒，字段会自动填写
-5. 如果有错误提示（如缺少字段），手动修正后点击"保存当前页"
-6. 继续到下一页
+1. 在 `intake.html` 生成并下载一份 `intake-v1` JSON
+2. 在 Chrome 中导航到 DS-160 表单页面
+3. 打开 `ds160-assistant.html` 并导入同一份 JSON
+4. 前端自动构建页面导航和字段 payload
+5. 点击"一键填入当前页"按钮
+6. 等待 1-2 秒，字段会自动填写
+7. 如果有错误提示（如缺少字段），手动修正后点击"保存当前页"
+8. 继续到下一页
 
 ### 支持的页面
 
@@ -116,19 +136,18 @@ file:///home/zhangzheng/0_platform/personal/idea/amercican_visa/app/ds160-assist
 
 ### 修改申请人信息
 
-编辑 `sample_data/china_b1b2_sample.json`：
+编辑 `sample_data/intake_v1_sample.json`：
 
 ```json
 {
-  "case_id": "CN-B1B2-001",
-  "identity": {
-    "surname": "ZHANG",
-    "given_names": "WEI",
-    "date_of_birth": "1990-08-15",
-    ...
-  }
+  "surname": "ZHANG",
+  "given_names": "WEI",
+  "date_of_birth": "1990-08-15",
+  "passport_number": "E12345678"
 }
 ```
+
+或者直接在 OCR 采集页生成 JSON 后，在执行器页面导入这份 JSON。
 
 ### 修改服务端口
 
@@ -182,12 +201,15 @@ uvicorn.run(
 ```
 .
 ├── app/                          # 前端 (HTML/CSS/JS)
+│   ├── intake.html               # 用户输入页，只生成统一 intake JSON
+│   ├── intake.js
+│   ├── intake.css
 │   ├── ds160-assistant.html
-│   ├── ds160-assistant.js
-│   ├── ds160-assistant.css
-│   └── data/draft_bundle.js      # 自动生成
+│   ├── ds160-assistant.js        # 执行器，只导入 intake JSON 后填表
+│   └── ds160-assistant.css
 ├── src/visa_agent/
 │   ├── server.py                 # FastAPI 本地服务
+│   ├── intake.py                 # intake JSON -> dossier 转换
 │   ├── schema.py                 # 数据模型
 │   ├── mapping.py                # 字段映射
 │   ├── planner.py                # 执行计划
@@ -197,7 +219,7 @@ uvicorn.run(
 │       ├── locators.py           # 页面选择器
 │       └── ...
 └── sample_data/
-    └── china_b1b2_sample.json    # 示例申请人数据
+    └── intake_v1_sample.json     # 示例 intake JSON
 ```
 
 ### 添加新页面支持

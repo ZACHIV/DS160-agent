@@ -14,8 +14,16 @@
         <div class="brand">
           <div class="eyebrow">DS-160 Local Draft</div>
           <h1>Page Assistant</h1>
-          <p>按正式 DS-160 流程走。你点当前页，系统只处理当前页，不替你跨页。</p>
+          <p>先导入采集页生成的资料文件，再按正式 DS-160 流程逐页执行。</p>
         </div>
+        <section class="import-card">
+          <label class="upload-field">
+            <span class="eyebrow">资料文件</span>
+            <input id="intake-file" type="file" accept="application/json,.json" />
+          </label>
+          <button id="load-intake" class="primary wide">导入资料文件</button>
+          <div id="intake-doc-status" class="import-status">尚未导入资料文件。</div>
+        </section>
         <div id="summary" class="summary"></div>
         <div id="page-nav" class="page-nav flow-nav"></div>
       </aside>
@@ -56,7 +64,7 @@
         <section class="panel">
           <div class="panel-head">
             <h3>Field Payload</h3>
-            <p>点按钮后，当前页会被标记为已完成预填，但不会自动跳页。</p>
+            <p>点击按钮后，系统只处理当前页，不会自动跳页。</p>
           </div>
           <div id="field-list" class="field-list"></div>
         </section>
@@ -79,7 +87,6 @@
       </section>
     </main>
 
-    <script src="./data/draft_bundle.js"></script>
     <script src="./ds160-assistant.js"></script>
   </body>
 </html>
