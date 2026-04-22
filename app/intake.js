@@ -138,6 +138,118 @@ function normalizeValue(value) {
 }
 
 
+function normalizedOptional(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const text = String(value).trim();
+  return text || null;
+}
+
+
+function normalizedRequired(value) {
+  return String(value ?? "").trim();
+}
+
+
+function purposeNotes(tripPurpose) {
+  const purpose = normalizedRequired(tripPurpose);
+  const purposeMap = {
+    tourism: "Tourism and personal travel in the United States.",
+    business: "Short business visit including meetings or partner discussions.",
+    business_tourism: "Attend business meetings and combine with short tourism.",
+    family_visit: "Visit family or friends in the United States.",
+  };
+  return purposeMap[purpose] || purpose || "B1/B2 travel purpose needs operator review.";
+}
+
+
+function buildLocalDossierFromIntake(intake) {
+  return {
+    case_id: "INTAKE-LOCAL-001",
+    identity: {
+      surname: normalizedRequired(intake.surname).toUpperCase(),
+      given_names: normalizedRequired(intake.given_names).toUpperCase(),
+      native_full_name: normalizedOptional(intake.native_full_name),
+      sex: normalizedRequired(intake.sex).toUpperCase(),
+      marital_status: normalizedRequired(intake.marital_status).toUpperCase(),
+      date_of_birth: normalizedRequired(intake.date_of_birth),
+      birth_city: normalizedRequired(intake.birth_city).toUpperCase(),
+      birth_province: null,
+      birth_country: "CHINA",
+      nationality: "CHINA",
+      passport_number: normalizedRequired(intake.passport_number).toUpperCase(),
+      passport_issuance_country: "CHINA",
+      passport_issue_date: normalizedRequired(intake.passport_issue_date),
+      passport_expiration_date: normalizedRequired(intake.passport_expiration_date),
+      passport_book_number: null,
+      source_ids: ["intake:web-form"],
+    },
+    travel_plan: {
+      visa_class: "B1/B2",
+      purpose_notes: purposeNotes(intake.trip_purpose),
+      intended_arrival_date: normalizedRequired(intake.intended_arrival_date),
+      intended_length_of_stay_value: normalizedRequired(intake.intended_length_of_stay_value),
+      intended_length_of_stay_unit: normalizedRequired(intake.intended_length_of_stay_unit).toUpperCase(),
+      payer_name: normalizedRequired(intake.payer_name),
+      us_contact_name: normalizedRequired(intake.us_contact_name),
+      us_contact_organization: normalizedOptional(intake.us_contact_organization),
+      us_contact_address_line1: normalizedRequired(intake.us_contact_address_line1),
+      us_contact_city: normalizedRequired(intake.us_contact_city),
+      us_contact_state: normalizedRequired(intake.us_contact_state).toUpperCase(),
+      us_contact_postal_code: normalizedRequired(intake.us_contact_postal_code),
+      us_contact_phone: normalizedRequired(intake.us_contact_phone),
+      us_contact_email: normalizedOptional(intake.us_contact_email),
+      source_ids: ["intake:web-form"],
+    },
+    employment_education: {
+      primary_occupation: normalizedRequired(intake.primary_occupation).toUpperCase(),
+      current_employer_name: normalizedRequired(intake.current_employer_name),
+      current_employer_address: normalizedRequired(intake.current_employer_address),
+      monthly_income_local: null,
+      school_name: null,
+      source_ids: ["intake:web-form"],
+    },
+    family_contacts: {
+      father_full_name: normalizedRequired(intake.father_full_name).toUpperCase(),
+      mother_full_name: normalizedRequired(intake.mother_full_name).toUpperCase(),
+      spouse_full_name: intake.spouse_full_name ? normalizedRequired(intake.spouse_full_name).toUpperCase() : null,
+      us_relative_name: null,
+      us_relative_status: null,
+      source_ids: ["intake:web-form"],
+    },
+    security_background: {
+      yes_no_answers: {
+        communicable_disease: Boolean(intake.communicable_disease),
+        arrest_history: Boolean(intake.arrest_history),
+      },
+      explanations: {},
+      source_ids: ["intake:web-form"],
+    },
+    evidence_catalog: [],
+  };
+}
+
+
+async function buildExportDocument(payload) {
+  try {
+    const res = await fetch(`${SERVER_BASE}/intake/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || "无法生成完整版资料");
+    }
+    return data.dossier;
+  } catch {
+    activateOfflineMode();
+    return buildLocalDossierFromIntake(payload);
+  }
+}
+
+
 function renderItems(element, items, emptyText, formatter) {
   if (!items.length) {
     element.className = "item-list empty";
@@ -578,7 +690,7 @@ function reportCard(doc) {
 }
 
 
-function renderExtractionResult(data) {
+async function renderExtractionResult(data) {
   const partialPayload = data.intake_document || {};
   applyPayloadToManualForm(partialPayload);
   if (data.missing_fields?.length) {
@@ -593,11 +705,12 @@ function renderExtractionResult(data) {
   if (data.intake_document) {
     applyPayloadToManualForm(data.intake_document);
     clearMissingHighlights();
-    state.latestJsonText = JSON.stringify(data.intake_document, null, 2);
+    const exportDocument = await buildExportDocument(data.intake_document);
+    state.latestJsonText = JSON.stringify(exportDocument, null, 2);
     jsonPreview.textContent = state.latestJsonText;
     downloadButton.disabled = false;
     copyButton.disabled = false;
-    submitStatus.textContent = "资料整理完成，识别结果已经回填到手填表单。下载后到执行页导入即可。";
+    submitStatus.textContent = "资料整理完成，识别结果已经回填到手填表单，当前导出的是完整版资料结构。";
   } else {
     state.latestJsonText = "";
     jsonPreview.textContent = "材料已经读取，但信息还不完整。可以补传更清晰的图片，或者直接用下方手填内容补齐。";
@@ -674,10 +787,10 @@ async function applyModelResult() {
       activateOfflineMode();
       data = buildLocalValidationResult(parsed);
     }
-    renderExtractionResult(data);
+    await renderExtractionResult(data);
     resultDialog.close();
     submitStatus.textContent = data.intake_document
-      ? "模型结果已应用，资料可以直接导出。"
+      ? "模型结果已应用，资料可以直接导出为完整版结构。"
       : "模型结果已应用，但还有缺失或格式问题，请继续补齐。";
   } catch (error) {
     submitStatus.textContent = error.message || "无法应用模型结果。";
@@ -723,16 +836,17 @@ function manualPayload() {
 }
 
 
-function renderManualResult(payload) {
+async function renderManualResult(payload) {
   clearMissingHighlights();
-  state.latestJsonText = JSON.stringify(payload, null, 2);
+  const exportDocument = await buildExportDocument(payload);
+  state.latestJsonText = JSON.stringify(exportDocument, null, 2);
   jsonPreview.textContent = state.latestJsonText;
   renderItems(missingFields, [], "手填方式已补齐当前页面内容。", issueCard);
   renderItems(visionWarnings, [], "没有额外提醒。", warningCard);
   renderItems(documentReports, [], "这次使用的是手动填写。", reportCard);
   downloadButton.disabled = false;
   copyButton.disabled = false;
-  submitStatus.textContent = "手动整理完成。下载后到执行页导入即可。";
+  submitStatus.textContent = "手动整理完成，当前导出的是可直接导入执行页的完整版资料。";
 }
 
 
@@ -744,7 +858,7 @@ function downloadJson() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "intake-v1.json";
+  link.download = "china-b1b2-dossier.json";
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -767,7 +881,7 @@ async function copyJson() {
 copyPromptButton.addEventListener("click", copyPrompt);
 pasteResultButton.addEventListener("click", openResultDialog);
 applyResultButton.addEventListener("click", applyModelResult);
-manualForm.addEventListener("submit", (event) => {
+manualForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const payload = manualPayload();
   const { missing, extras, invalids } = validateManualPayload(payload);
@@ -780,7 +894,7 @@ manualForm.addEventListener("submit", (event) => {
     submitStatus.textContent = "还有未填写或格式不对的信息，请先补齐高亮位置。";
     return;
   }
-  renderManualResult(payload);
+  await renderManualResult(payload);
 });
 Array.from(manualForm.elements).forEach((field) => {
   if (!field.name) {

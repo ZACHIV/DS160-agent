@@ -125,6 +125,15 @@ class IntakeBuilderTests(unittest.TestCase):
         self.assertIn("buildLocalPromptText", script)
         self.assertIn("已切换到离线模式", script)
 
+    def test_static_page_exports_full_dossier_shape(self) -> None:
+        script = INTAKE_JS.read_text(encoding="utf-8")
+        self.assertIn("buildExportDocument", script)
+        self.assertIn("buildLocalDossierFromIntake", script)
+        self.assertIn('link.download = "china-b1b2-dossier.json"', script)
+        self.assertIn("case_id: \"INTAKE-LOCAL-001\"", script)
+        self.assertIn("travel_plan:", script)
+        self.assertIn("security_background:", script)
+
     def test_invalid_enum_is_rejected_by_contract(self) -> None:
         payload = sample_payload()
         payload["trip_purpose"] = "unknown"

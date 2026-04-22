@@ -1,237 +1,140 @@
-# DS-160 表单助手 - 快速启动指南
+# DS-160 Agent Quickstart
 
-自动化美国签证 DS-160 表单填写工具。
+## Purpose
 
-## 系统要求
+- `app/intake.html`: collect intake data from images/manual input; export final JSON for execution.
+- `app/ds160-assistant.html`: import JSON and autofill DS-160 via local FastAPI + Chrome CDP.
+
+## Runtime Contract
 
 - Python 3.10+
-- Google Chrome 或 Chromium（已安装）
-- uv 包管理器或 pip
+- Chrome/Chromium installed
+- macOS or Ubuntu
+- FastAPI service: `http://127.0.0.1:8765`
+- Chrome remote debugging: `9222`
 
-## 安装
-
-### 1. 创建虚拟环境并安装依赖
-
-```bash
-cd /home/zhangzheng/0_platform/personal/idea/amercican_visa
-
-# 使用 uv（推荐，更快）
-uv venv
-source .venv/bin/activate
-uv pip install fastapi uvicorn
-
-# 或使用 pip
-python3 -m venv .venv
-source .venv/bin/activate
-pip install fastapi uvicorn
-```
-
-如果要使用图片识别采集，额外需要配置视觉模型：
+## Install
 
 ```bash
-export VISION_MODEL_API_KEY=你的key
-export VISION_MODEL_NAME=你的视觉模型名
-export VISION_MODEL_BASE_URL=你的兼容接口地址
+cd /path/to/amercican_visa
+uv venv && source .venv/bin/activate && uv pip install fastapi uvicorn
 ```
 
-## 启动流程
-
-### 第 1 步：启动 Chrome（开启远程调试）
+Optional for vision intake:
 
 ```bash
-DISPLAY=:1 /opt/google/chrome/chrome \
-  --remote-debugging-port=9222 \
-  --user-data-dir=/home/zhangzheng/0_platform/personal/idea/amercican_visa/.visible-browser-profile \
-  --no-first-run \
-  --disable-extensions \
-  https://ceac.state.gov/genniv/
+export VISION_MODEL_API_KEY=...
+export VISION_MODEL_NAME=...
+export VISION_MODEL_BASE_URL=...
 ```
 
-**或简单地用这个命令**（如果已安装 google-chrome）：
-```bash
-google-chrome --remote-debugging-port=9222 https://ceac.state.gov/genniv/ &
-```
+## Start
 
-> ⚠️ **重要**：确保 Chrome 完全加载后再进行下一步
-
-### 第 2 步：启动本地服务器
-
-在**新终端标签**中：
+macOS:
 
 ```bash
-cd /home/zhangzheng/0_platform/personal/idea/amercican_visa
-
-# 激活虚拟环境
-source .venv/bin/activate
-
-# 启动服务
-PYTHONPATH=src python -m visa_agent.server
+bash scripts/start-mac.sh
 ```
 
-PYTHONPATH=src .venv/bin/python -m visa_agent.server
+Ubuntu:
 
-
-你应该看到：
-```
-INFO:     Uvicorn running on http://127.0.0.1:8765
+```bash
+bash scripts/start-ubuntu.sh
 ```
 
-### 第 3 步：先用图片识别或手动填写生成 intake JSON
+Server only:
 
-在浏览器中打开：
-```
-file:///home/zhangzheng/0_platform/personal/idea/amercican_visa/app/intake.html
-```
-
-按页面清单上传图片，点击“复制提示词”；然后去外部视觉大模型中上传同样的图片，并把模型返回结果粘贴回页面。或者直接手动填写。资料完整后，下载生成的 `intake-v1` JSON。
-
-### 第 4 步：打开执行器并导入同一份 JSON
-
-然后打开：
-```
-file:///home/zhangzheng/0_platform/personal/idea/amercican_visa/app/ds160-assistant.html
+```bash
+bash scripts/start-server.sh
 ```
 
-在左侧导入刚才生成的 `intake-v1` JSON。执行器会基于这同一份文档构建本地 draft bundle。
+Manual split:
 
-## 使用说明
-
-### 前端界面
-
-1. **连接状态**：
-   - 🟢 **已连接 ✓** - 服务和 Chrome 连接正常
-   - 🟡 **已连接 (无DS-160标签)** - 服务运行，但 Chrome 未打开 DS-160 表单
-   - 🔴 **服务未启动** - 本地服务未运行
-
-2. **导入 intake JSON** - 执行器不采集用户资料，只导入统一 JSON 文档
-3. **一键填入当前页** - 点击自动填写当前 DS-160 页面的所有字段
-4. **保存当前页** - 点击保存按钮保存当前页进度
-5. **重置标记** - 清除页面完成标记
-
-### 工作流程
-
-1. 在 `intake.html` 生成并下载一份 `intake-v1` JSON
-2. 在 Chrome 中导航到 DS-160 表单页面
-3. 打开 `ds160-assistant.html` 并导入同一份 JSON
-4. 前端自动构建页面导航和字段 payload
-5. 点击"一键填入当前页"按钮
-6. 等待 1-2 秒，字段会自动填写
-7. 如果有错误提示（如缺少字段），手动修正后点击"保存当前页"
-8. 继续到下一页
-
-### 支持的页面
-
-✅ 已实现：
-- Personal Information (个人信息)
-- Passport (护照)
-- Travel Plans (旅行计划)
-- Travel Companions (旅行同伴)
-- Previous U.S. Travel (之前的美国旅行)
-- Address & Phone (地址和电话)
-- Employment (工作)
-- Family (家庭)
-- Security Background (安全背景)
-
-## 配置
-
-### 修改申请人信息
-
-编辑 `sample_data/intake_v1_sample.json`：
-
-```json
-{
-  "surname": "ZHANG",
-  "given_names": "WEI",
-  "date_of_birth": "1990-08-15",
-  "passport_number": "E12345678"
-}
+```bash
+bash scripts/start-chrome-debug.sh
+bash scripts/start-server.sh
 ```
 
-或者直接在图片采集页生成 JSON 后，在执行器页面导入这份 JSON。
+Ubuntu manual Chrome:
 
-### 修改服务端口
-
-编辑 `src/visa_agent/server.py` 最后几行：
-
-```python
-uvicorn.run(
-    "visa_agent.server:app",
-    host="127.0.0.1",
-    port=8765,  # <-- 修改这里
-    ...
-)
+```bash
+bash scripts/start-chrome-debug-ubuntu.sh
 ```
 
-然后重启服务。
+Stop macOS local processes:
 
-## 故障排除
-
-### 问题：连接失败 "Chrome not reachable on CDP port"
-
-**解决**：
-1. 确保 Chrome 已启动并指定了 `--remote-debugging-port=9222`
-2. 检查端口是否被占用：
-   ```bash
-   ss -tlnp | grep 9222
-   ```
-3. 杀死旧 Chrome 进程：
-   ```bash
-   pkill -f "chrome.*9222"
-   ```
-4. 重新启动 Chrome
-
-### 问题：页面无法检测
-
-**解决**：
-1. 确认 Chrome 显示的是 DS-160 表单页面
-2. 检查浏览器开发者工具（F12）是否有 JS 错误
-3. 尝试刷新页面
-
-### 问题：字段填写失败
-
-**解决**：
-1. 检查前端提示的"缺失字段"，可能需要手动填写某些内容
-2. 等待 2 秒让表单刷新
-3. 查看浏览器控制台（F12）的网络请求错误
-
-## 开发者注意
-
-### 项目结构
-
-```
-.
-├── app/                          # 前端 (HTML/CSS/JS)
-│   ├── intake.html               # 用户输入页，只生成统一 intake JSON
-│   ├── intake.js
-│   ├── intake.css
-│   ├── ds160-assistant.html
-│   ├── ds160-assistant.js        # 执行器，只导入 intake JSON 后填表
-│   └── ds160-assistant.css
-├── src/visa_agent/
-│   ├── server.py                 # FastAPI 本地服务
-│   ├── intake.py                 # intake JSON -> dossier 转换
-│   ├── schema.py                 # 数据模型
-│   ├── mapping.py                # 字段映射
-│   ├── planner.py                # 执行计划
-│   └── browser/
-│       ├── cdp_client.py         # Chrome DevTools Protocol
-│       ├── live_form_fill.py     # 表单填写逻辑
-│       ├── locators.py           # 页面选择器
-│       └── ...
-└── sample_data/
-    └── intake_v1_sample.json     # 示例 intake JSON
+```bash
+bash scripts/stop-mac.sh
 ```
 
-### 添加新页面支持
+## Data Contract
 
-1. 在 `src/visa_agent/browser/live_form_fill.py` 中添加 `fill_xxx_page()` 函数
-2. 在 `src/visa_agent/browser/locators.py` 中添加页面的选择器和字段
-3. 在 `_PAGE_FILL_HANDLERS` 字典中注册处理函数
+- Intake UI internally works with `intake-v1` fields.
+- Exported/downloaded JSON is dossier-shaped by default, e.g. `china-b1b2-dossier.json`.
+- Assistant accepts both:
+  - `intake-v1` JSON
+  - full dossier JSON
+- If assistant receives `intake-v1`, backend converts it to dossier before building draft bundle.
+- Offline intake mode still exports dossier-shaped JSON locally.
 
-## 许可
+## Happy Path
 
-仅用于教学和个人使用。
+1. Run start script.
+2. Use `app/intake.html`.
+3. Upload docs or fill manually.
+4. Export JSON.
+5. Open `app/ds160-assistant.html`.
+6. Import same JSON.
+7. Navigate DS-160 in Chrome.
+8. Click fill/save page by page.
 
-## 联系
+## Key Files
 
-有问题或建议，请查看项目文档。
+- `scripts/start-mac.sh`
+- `scripts/start-ubuntu.sh`
+- `scripts/start-server.sh`
+- `scripts/start-chrome-debug.sh`
+- `scripts/start-chrome-debug-ubuntu.sh`
+- `app/intake.js`
+- `app/ds160-assistant.js`
+- `src/visa_agent/server.py`
+- `src/visa_agent/intake.py`
+- `src/visa_agent/browser/live_form_fill.py`
+- `sample_data/intake_v1_sample.json`
+- `sample_data/china_b1b2_sample.json`
+
+## Verify
+
+Service up:
+
+```bash
+curl http://127.0.0.1:8765/status
+```
+
+Tests:
+
+```bash
+PYTHONPATH=src python -m pytest tests/test_intake.py tests/test_mapping.py tests/test_draft_bundle.py
+```
+
+## Troubleshooting
+
+CDP not reachable:
+
+```bash
+lsof -i :9222
+pkill -f "remote-debugging-port=9222"
+```
+
+Server not reachable:
+
+```bash
+lsof -i :8765
+bash scripts/start-server.sh
+```
+
+If autofill fails:
+
+- confirm Chrome is on a supported DS-160 page
+- inspect assistant review/blocked fields
+- check browser console and server logs
