@@ -15,10 +15,25 @@
 
 ## Install
 
+macOS / Ubuntu:
+
 ```bash
 cd /path/to/amercican_visa
-uv venv && source .venv/bin/activate && uv pip install fastapi uvicorn
+bash scripts/install-deps.sh
+source .venv/bin/activate
 ```
+
+Windows PowerShell:
+
+```powershell
+cd \path\to\amercican_visa
+.\scripts\install-deps.ps1
+.\.venv\Scripts\Activate.ps1
+```
+
+- If `uv` is installed, the script uses it.
+- If `uv` is not installed, the script falls back to `python -m venv` + `pip`.
+- Runtime server dependencies are defined in `requirements.txt`.
 
 Optional for vision intake:
 
@@ -30,41 +45,30 @@ export VISION_MODEL_BASE_URL=...
 
 ## Start
 
-macOS:
+macOS / Ubuntu:
 
 ```bash
-bash scripts/start-mac.sh
+bash scripts/start.sh
 ```
 
-Ubuntu:
+Windows PowerShell:
 
-```bash
-bash scripts/start-ubuntu.sh
+```powershell
+.\scripts\start.ps1
 ```
 
-Server only:
+## Stop
+
+macOS / Ubuntu:
 
 ```bash
-bash scripts/start-server.sh
+bash scripts/stop.sh
 ```
 
-Manual split:
+Windows PowerShell:
 
-```bash
-bash scripts/start-chrome-debug.sh
-bash scripts/start-server.sh
-```
-
-Ubuntu manual Chrome:
-
-```bash
-bash scripts/start-chrome-debug-ubuntu.sh
-```
-
-Stop macOS local processes:
-
-```bash
-bash scripts/stop-mac.sh
+```powershell
+.\scripts\stop.ps1
 ```
 
 ## Data Contract
@@ -87,15 +91,16 @@ bash scripts/stop-mac.sh
 
 ## Key Files
 
-- `scripts/start-mac.sh`
-- `scripts/start-ubuntu.sh`
-- `scripts/start-server.sh`
-- `scripts/start-chrome-debug.sh`
-- `scripts/start-chrome-debug-ubuntu.sh`
+- `scripts/install-deps.sh`
+- `scripts/install-deps.ps1`
+- `scripts/start.sh`
+- `scripts/start.ps1`
+- `scripts/stop.sh`
+- `scripts/stop.ps1`
 - `app/intake.js`
 - `app/ds160-assistant.js`
 - `src/visa_agent/server.py`
-- `src/visa_agent/intake.py`
+- `src/visa_agent/dossier_contract.py`
 - `src/visa_agent/browser/live_form_fill.py`
 - `docs/dossier.schema.json`
 - `sample_data/china_b1b2_fake_test.json`
@@ -128,7 +133,7 @@ Server not reachable:
 
 ```bash
 lsof -i :8765
-bash scripts/start-server.sh
+bash scripts/start.sh
 ```
 
 If autofill fails:

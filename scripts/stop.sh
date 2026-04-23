@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DRY_RUN=0
+PROFILE_DIR="$ROOT_DIR/.visible-browser-profile"
 SERVER_PORT=8765
 REMOTE_DEBUGGING_PORT=9222
-PROFILE_DIR="$ROOT_DIR/.visible-browser-profile"
+DRY_RUN=0
 
 while (($# > 0)); do
   case "$1" in
@@ -29,7 +29,7 @@ chrome_pids() {
 }
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "DRY RUN: scripts/stop-mac.sh"
+  echo "DRY RUN: scripts/stop.sh"
   echo "Would stop FastAPI listener on 127.0.0.1:${SERVER_PORT}"
   echo "Would stop Chrome debug processes matching --remote-debugging-port=${REMOTE_DEBUGGING_PORT} and profile ${PROFILE_DIR}"
   exit 0
