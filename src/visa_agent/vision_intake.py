@@ -6,7 +6,11 @@ import os
 from typing import Callable
 from urllib import request
 
-from visa_agent.intake_contract import intake_field_errors, missing_required_intake_fields, normalized_intake_payload, validate_intake_payload
+from visa_agent.dossier_contract import (
+    dossier_field_errors,
+    missing_required_dossier_fields,
+    validate_dossier_payload,
+)
 
 
 @dataclass(frozen=True)
@@ -37,15 +41,15 @@ class VisionDocumentReport:
 
 
 @dataclass(frozen=True)
-class VisionIntakeResult:
-    intake_document: dict[str, object] | None
+class VisionDossierResult:
+    dossier_document: dict[str, object] | None
     missing_fields: list[str]
     warnings: list[str]
     documents: list[VisionDocumentReport]
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "intake_document": self.intake_document,
+            "dossier_document": self.dossier_document,
             "missing_fields": self.missing_fields,
             "warnings": self.warnings,
             "documents": [item.to_dict() for item in self.documents],
@@ -103,7 +107,7 @@ class VisionModelClient:
                     "role": "system",
                     "content": (
                         "你是美国签证资料整理助手。请只根据用户上传的图片，提取并返回一个 JSON 对象。"
-                        "这个对象必须只包含目标 schema 中定义的字段。"
+                    "这个对象必须只包含目标 dossier schema 中定义的字段。"
                         "缺失或无法确认的字段不要猜测，直接填 null。"
                         "布尔字段必须返回 true 或 false。"
                     ),
@@ -134,7 +138,7 @@ class VisionModelClient:
     def build_prompt_text(self, documents: list[VisionUploadedDocument], schema: dict[str, object]) -> str:
         doc_lines = "\n".join(f"- {document.kind}: {document.filename}" for document in documents) or "- 未选择文件"
         return (
-            "你是美国签证资料整理助手。请根据我接下来上传的图片，直接返回一个 JSON 对象。\n"
+            "你是美国签证资料整理助手。请根据我接下来上传的图片，直接返回一个完整 dossier JSON 对象。\n"
             "要求：\n"
             "1. 只允许返回 schema 中定义的字段\n"
             "2. 不要输出 markdown\n"
@@ -150,7 +154,7 @@ class VisionModelClient:
             {
                 "type": "text",
                 "text": (
-                    "请把上传图片整理成 intake-v1 结构。"
+                    "请把上传图片整理成完整 dossier 结构。"
                     "输出必须是一个 JSON 对象，只能包含 schema 中的字段。"
                     "禁止输出 markdown、解释文字或额外字段。\n\n"
                     f"目标 schema:\n{json.dumps(schema, ensure_ascii=False, indent=2)}"
@@ -181,11 +185,11 @@ def vision_document_specs() -> list[dict[str, object]]:
     return [asdict(item) for item in VISION_DOCUMENT_SPECS]
 
 
-def extract_intake_from_documents(
+def extract_dossier_from_documents(
     documents: list[VisionUploadedDocument],
     schema: dict[str, object],
     model_extractor: Callable[[list[VisionUploadedDocument], dict[str, object]], dict[str, object]] | None = None,
-) -> VisionIntakeResult:
+) -> VisionDossierResult:
     extractor = model_extractor or VisionModelClient().extract_fields
     warnings: list[str] = []
     reports: list[VisionDocumentReport] = []
@@ -218,27 +222,27 @@ def extract_intake_from_documents(
             warnings.append(f"忽略未知文件类型：{uploaded.kind}")
 
     raw_payload = extractor(documents, schema)
-    intake_document, missing_fields, validation_warnings = _build_complete_intake(raw_payload)
+    dossier_document, missing_fields, validation_warnings = _build_complete_dossier(raw_payload)
     warnings.extend(validation_warnings)
-    return VisionIntakeResult(
-        intake_document=intake_document,
+    return VisionDossierResult(
+        dossier_document=dossier_document,
         missing_fields=missing_fields,
         warnings=_unique_list(warnings),
         documents=reports,
     )
 
 
-def _build_complete_intake(field_values: dict[str, object]) -> tuple[dict[str, object] | None, list[str], list[str]]:
-    payload = normalized_intake_payload(field_values)
-    missing = missing_required_intake_fields(payload)
+def _build_complete_dossier(field_values: dict[str, object]) -> tuple[dict[str, object] | None, list[str], list[str]]:
+    payload = dict(field_values)
+    missing = missing_required_dossier_fields(payload)
     if missing:
         return None, missing, []
-    errors = intake_field_errors(payload)
+    errors = dossier_field_errors(payload)
     if errors:
         invalid_fields = list(errors.keys())
         warnings = [f"{field} 格式或取值不符合要求" for field in invalid_fields]
         return None, invalid_fields, warnings
-    return validate_intake_payload(payload), [], []
+    return validate_dossier_payload(payload), [], []
 
 
 def _unique_list(values: list[str]) -> list[str]:

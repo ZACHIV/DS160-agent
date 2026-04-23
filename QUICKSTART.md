@@ -2,7 +2,7 @@
 
 ## Purpose
 
-- `app/intake.html`: collect intake data from images/manual input; export final JSON for execution.
+- `app/intake.html`: collect full dossier data from images/manual input; export final JSON for execution.
 - `app/ds160-assistant.html`: import JSON and autofill DS-160 via local FastAPI + Chrome CDP.
 
 ## Runtime Contract
@@ -69,13 +69,10 @@ bash scripts/stop-mac.sh
 
 ## Data Contract
 
-- Intake UI internally works with `intake-v1` fields.
-- Exported/downloaded JSON is dossier-shaped by default, e.g. `china-b1b2-dossier.json`.
-- Assistant accepts both:
-  - `intake-v1` JSON
-  - full dossier JSON
-- If assistant receives `intake-v1`, backend converts it to dossier before building draft bundle.
-- Offline intake mode still exports dossier-shaped JSON locally.
+- Intake UI works directly with the full dossier schema.
+- Exported/downloaded JSON is a full dossier, e.g. `china-b1b2-dossier.json`.
+- Assistant accepts full dossier JSON only.
+- Offline intake mode still exports the same full dossier structure locally.
 
 ## Happy Path
 
@@ -100,7 +97,8 @@ bash scripts/stop-mac.sh
 - `src/visa_agent/server.py`
 - `src/visa_agent/intake.py`
 - `src/visa_agent/browser/live_form_fill.py`
-- `sample_data/intake_v1_sample.json`
+- `docs/dossier.schema.json`
+- `sample_data/china_b1b2_fake_test.json`
 - `sample_data/china_b1b2_sample.json`
 
 ## Verify

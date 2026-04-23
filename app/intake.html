@@ -96,189 +96,278 @@
           <form id="manual-form" class="form-group">
             <div class="group-head">
               <p class="eyebrow">03 Manual Entry</p>
-              <h2>也可以直接手动填写</h2>
+              <h2>也可以直接手动填写 full dossier</h2>
             </div>
             <div class="grid two">
               <label>
-                <span>护照英文姓</span>
-                <input name="surname" required placeholder="ZHANG" />
-                <small class="field-hint" data-hint-for="surname"></small>
+                <span>Case ID</span>
+                <input name="case_id" required placeholder="CN-B1B2-2026-001" />
+                <small class="field-hint" data-hint-for="case_id"></small>
               </label>
               <label>
+                <span>签证类别</span>
+                <input name="travel_plan.visa_class" required placeholder="B1/B2" value="B1/B2" />
+                <small class="field-hint" data-hint-for="travel_plan.visa_class"></small>
+              </label>
+              <label class="full">
+                <span>护照英文姓</span>
+                <input name="identity.surname" required placeholder="ZHANG" />
+                <small class="field-hint" data-hint-for="identity.surname"></small>
+              </label>
+              <label class="full">
                 <span>护照英文名</span>
-                <input name="given_names" required placeholder="WEI" />
-                <small class="field-hint" data-hint-for="given_names"></small>
+                <input name="identity.given_names" required placeholder="WEI" />
+                <small class="field-hint" data-hint-for="identity.given_names"></small>
               </label>
               <label class="full">
                 <span>中文姓名</span>
-                <input name="native_full_name" placeholder="张伟" />
-                <small class="field-hint" data-hint-for="native_full_name"></small>
+                <input name="identity.native_full_name" placeholder="张伟" />
+                <small class="field-hint" data-hint-for="identity.native_full_name"></small>
               </label>
               <label>
                 <span>性别</span>
-                <select name="sex" required>
+                <select name="identity.sex" required>
                   <option value="MALE">男</option>
                   <option value="FEMALE">女</option>
                 </select>
-                <small class="field-hint" data-hint-for="sex"></small>
+                <small class="field-hint" data-hint-for="identity.sex"></small>
               </label>
               <label>
                 <span>婚姻状态</span>
-                <select name="marital_status" required>
+                <select name="identity.marital_status" required>
                   <option value="SINGLE">未婚</option>
                   <option value="MARRIED">已婚</option>
                   <option value="DIVORCED">离婚</option>
                   <option value="WIDOWED">丧偶</option>
                 </select>
-                <small class="field-hint" data-hint-for="marital_status"></small>
+                <small class="field-hint" data-hint-for="identity.marital_status"></small>
               </label>
               <label>
                 <span>出生日期</span>
-                <input type="date" name="date_of_birth" required />
-                <small class="field-hint" data-hint-for="date_of_birth"></small>
+                <input type="date" name="identity.date_of_birth" required />
+                <small class="field-hint" data-hint-for="identity.date_of_birth"></small>
               </label>
               <label>
                 <span>出生城市</span>
-                <input name="birth_city" required placeholder="Shanghai" />
-                <small class="field-hint" data-hint-for="birth_city"></small>
+                <input name="identity.birth_city" required placeholder="Shanghai" />
+                <small class="field-hint" data-hint-for="identity.birth_city"></small>
+              </label>
+              <label>
+                <span>出生省份</span>
+                <input name="identity.birth_province" placeholder="Shanghai" />
+                <small class="field-hint" data-hint-for="identity.birth_province"></small>
+              </label>
+              <label>
+                <span>出生国家</span>
+                <input name="identity.birth_country" required placeholder="CHINA" value="CHINA" />
+                <small class="field-hint" data-hint-for="identity.birth_country"></small>
+              </label>
+              <label>
+                <span>国籍</span>
+                <input name="identity.nationality" required placeholder="CHINA" value="CHINA" />
+                <small class="field-hint" data-hint-for="identity.nationality"></small>
               </label>
               <label>
                 <span>护照号码</span>
-                <input name="passport_number" required placeholder="E12345678" />
-                <small class="field-hint" data-hint-for="passport_number"></small>
+                <input name="identity.passport_number" required placeholder="E12345678" />
+                <small class="field-hint" data-hint-for="identity.passport_number"></small>
+              </label>
+              <label>
+                <span>护照签发国家</span>
+                <input name="identity.passport_issuance_country" required placeholder="CHINA" value="CHINA" />
+                <small class="field-hint" data-hint-for="identity.passport_issuance_country"></small>
               </label>
               <label>
                 <span>护照签发日期</span>
-                <input type="date" name="passport_issue_date" required />
-                <small class="field-hint" data-hint-for="passport_issue_date"></small>
+                <input type="date" name="identity.passport_issue_date" required />
+                <small class="field-hint" data-hint-for="identity.passport_issue_date"></small>
               </label>
               <label>
                 <span>护照失效日期</span>
-                <input type="date" name="passport_expiration_date" required />
-                <small class="field-hint" data-hint-for="passport_expiration_date"></small>
+                <input type="date" name="identity.passport_expiration_date" required />
+                <small class="field-hint" data-hint-for="identity.passport_expiration_date"></small>
               </label>
               <label>
-                <span>赴美目的</span>
-                <select name="trip_purpose" required>
-                  <option value="business_tourism">商务 + 旅游</option>
-                  <option value="business">商务</option>
-                  <option value="tourism">旅游</option>
-                  <option value="family_visit">探亲访友</option>
-                </select>
-                <small class="field-hint" data-hint-for="trip_purpose"></small>
+                <span>护照本编号</span>
+                <input name="identity.passport_book_number" placeholder="无可留空" />
+                <small class="field-hint" data-hint-for="identity.passport_book_number"></small>
+              </label>
+              <label class="full">
+                <span>Identity Source IDs</span>
+                <input name="identity.source_ids" required placeholder="passport_scan, passport_translation" />
+                <small class="field-hint" data-hint-for="identity.source_ids"></small>
+              </label>
+              <label class="full">
+                <span>赴美目的说明</span>
+                <textarea name="travel_plan.purpose_notes" rows="3" placeholder="Attend supplier meetings in California and combine with short tourism."></textarea>
+                <small class="field-hint" data-hint-for="travel_plan.purpose_notes"></small>
               </label>
               <label>
                 <span>预计到达日期</span>
-                <input type="date" name="intended_arrival_date" required />
-                <small class="field-hint" data-hint-for="intended_arrival_date"></small>
+                <input type="date" name="travel_plan.intended_arrival_date" />
+                <small class="field-hint" data-hint-for="travel_plan.intended_arrival_date"></small>
               </label>
               <label>
                 <span>停留时长</span>
                 <div class="inline-pair">
-                  <input name="intended_length_of_stay_value" required placeholder="12" />
-                  <select name="intended_length_of_stay_unit" required>
+                  <input name="travel_plan.intended_length_of_stay_value" placeholder="12" />
+                  <select name="travel_plan.intended_length_of_stay_unit">
+                    <option value="">请选择</option>
                     <option value="DAYS">天</option>
                     <option value="WEEKS">周</option>
                     <option value="MONTHS">月</option>
                   </select>
                 </div>
-                <small class="field-hint" data-hint-for="intended_length_of_stay_value"></small>
-                <small class="field-hint" data-hint-for="intended_length_of_stay_unit"></small>
+                <small class="field-hint" data-hint-for="travel_plan.intended_length_of_stay_value"></small>
+                <small class="field-hint" data-hint-for="travel_plan.intended_length_of_stay_unit"></small>
               </label>
               <label>
                 <span>费用承担方</span>
-                <input name="payer_name" required placeholder="Shanghai Example Trading Co., Ltd." />
-                <small class="field-hint" data-hint-for="payer_name"></small>
+                <input name="travel_plan.payer_name" placeholder="Shanghai Example Trading Co., Ltd." />
+                <small class="field-hint" data-hint-for="travel_plan.payer_name"></small>
               </label>
               <label>
                 <span>美国联系人姓名</span>
-                <input name="us_contact_name" required placeholder="Michael Chen" />
-                <small class="field-hint" data-hint-for="us_contact_name"></small>
+                <input name="travel_plan.us_contact_name" placeholder="Michael Chen" />
+                <small class="field-hint" data-hint-for="travel_plan.us_contact_name"></small>
               </label>
               <label>
                 <span>机构名称</span>
-                <input name="us_contact_organization" placeholder="Example US Imports" />
-                <small class="field-hint" data-hint-for="us_contact_organization"></small>
+                <input name="travel_plan.us_contact_organization" placeholder="Example US Imports" />
+                <small class="field-hint" data-hint-for="travel_plan.us_contact_organization"></small>
               </label>
               <label>
                 <span>联系电话</span>
-                <input name="us_contact_phone" required placeholder="+1 415 555 0187" />
-                <small class="field-hint" data-hint-for="us_contact_phone"></small>
+                <input name="travel_plan.us_contact_phone" placeholder="+1 415 555 0187" />
+                <small class="field-hint" data-hint-for="travel_plan.us_contact_phone"></small>
               </label>
               <label class="full">
                 <span>联系人地址</span>
-                <input name="us_contact_address_line1" required placeholder="500 Market Street" />
-                <small class="field-hint" data-hint-for="us_contact_address_line1"></small>
+                <input name="travel_plan.us_contact_address_line1" placeholder="500 Market Street" />
+                <small class="field-hint" data-hint-for="travel_plan.us_contact_address_line1"></small>
               </label>
               <label>
                 <span>城市</span>
-                <input name="us_contact_city" required placeholder="San Francisco" />
-                <small class="field-hint" data-hint-for="us_contact_city"></small>
+                <input name="travel_plan.us_contact_city" placeholder="San Francisco" />
+                <small class="field-hint" data-hint-for="travel_plan.us_contact_city"></small>
               </label>
               <label>
                 <span>州</span>
-                <input name="us_contact_state" required placeholder="California" />
-                <small class="field-hint" data-hint-for="us_contact_state"></small>
+                <input name="travel_plan.us_contact_state" placeholder="California" />
+                <small class="field-hint" data-hint-for="travel_plan.us_contact_state"></small>
               </label>
               <label>
                 <span>邮编</span>
-                <input name="us_contact_postal_code" required placeholder="94105" />
-                <small class="field-hint" data-hint-for="us_contact_postal_code"></small>
+                <input name="travel_plan.us_contact_postal_code" placeholder="94105" />
+                <small class="field-hint" data-hint-for="travel_plan.us_contact_postal_code"></small>
               </label>
               <label>
                 <span>邮箱</span>
-                <input type="email" name="us_contact_email" placeholder="mchen@example.com" />
-                <small class="field-hint" data-hint-for="us_contact_email"></small>
+                <input type="email" name="travel_plan.us_contact_email" placeholder="mchen@example.com" />
+                <small class="field-hint" data-hint-for="travel_plan.us_contact_email"></small>
+              </label>
+              <label class="full">
+                <span>Travel Source IDs</span>
+                <input name="travel_plan.source_ids" required placeholder="itinerary_email, invitation_letter" />
+                <small class="field-hint" data-hint-for="travel_plan.source_ids"></small>
               </label>
               <label>
                 <span>当前职业</span>
-                <select name="primary_occupation" required>
+                <select name="employment_education.primary_occupation">
+                  <option value="">请选择</option>
                   <option value="BUSINESSPERSON">企业人员</option>
                   <option value="STUDENT">学生</option>
                   <option value="OTHER">其他</option>
                 </select>
-                <small class="field-hint" data-hint-for="primary_occupation"></small>
+                <small class="field-hint" data-hint-for="employment_education.primary_occupation"></small>
               </label>
               <label>
                 <span>当前单位</span>
-                <input name="current_employer_name" required placeholder="Shanghai Example Trading Co., Ltd." />
-                <small class="field-hint" data-hint-for="current_employer_name"></small>
+                <input name="employment_education.current_employer_name" placeholder="Shanghai Example Trading Co., Ltd." />
+                <small class="field-hint" data-hint-for="employment_education.current_employer_name"></small>
               </label>
               <label class="full">
                 <span>单位地址</span>
-                <input name="current_employer_address" required placeholder="88 Huaihai Middle Road, Shanghai, China" />
-                <small class="field-hint" data-hint-for="current_employer_address"></small>
+                <input name="employment_education.current_employer_address" placeholder="88 Huaihai Middle Road, Shanghai, China" />
+                <small class="field-hint" data-hint-for="employment_education.current_employer_address"></small>
+              </label>
+              <label>
+                <span>月收入</span>
+                <input name="employment_education.monthly_income_local" placeholder="32000" />
+                <small class="field-hint" data-hint-for="employment_education.monthly_income_local"></small>
+              </label>
+              <label>
+                <span>学校名称</span>
+                <input name="employment_education.school_name" placeholder="学生可填写学校" />
+                <small class="field-hint" data-hint-for="employment_education.school_name"></small>
+              </label>
+              <label class="full">
+                <span>Employment Source IDs</span>
+                <input name="employment_education.source_ids" required placeholder="employment_letter" />
+                <small class="field-hint" data-hint-for="employment_education.source_ids"></small>
               </label>
               <label>
                 <span>父亲姓名</span>
-                <input name="father_full_name" required placeholder="ZHANG JIANGUO" />
-                <small class="field-hint" data-hint-for="father_full_name"></small>
+                <input name="family_contacts.father_full_name" placeholder="ZHANG JIANGUO" />
+                <small class="field-hint" data-hint-for="family_contacts.father_full_name"></small>
               </label>
               <label>
                 <span>母亲姓名</span>
-                <input name="mother_full_name" required placeholder="LI HUA" />
-                <small class="field-hint" data-hint-for="mother_full_name"></small>
+                <input name="family_contacts.mother_full_name" placeholder="LI HUA" />
+                <small class="field-hint" data-hint-for="family_contacts.mother_full_name"></small>
               </label>
               <label>
                 <span>配偶姓名</span>
-                <input name="spouse_full_name" placeholder="未婚可留空" />
-                <small class="field-hint" data-hint-for="spouse_full_name"></small>
+                <input name="family_contacts.spouse_full_name" placeholder="未婚可留空" />
+                <small class="field-hint" data-hint-for="family_contacts.spouse_full_name"></small>
+              </label>
+              <label>
+                <span>美国亲属姓名</span>
+                <input name="family_contacts.us_relative_name" placeholder="无可留空" />
+                <small class="field-hint" data-hint-for="family_contacts.us_relative_name"></small>
+              </label>
+              <label>
+                <span>美国亲属关系/身份</span>
+                <input name="family_contacts.us_relative_status" placeholder="例如 FRIEND / BROTHER / LPR" />
+                <small class="field-hint" data-hint-for="family_contacts.us_relative_status"></small>
+              </label>
+              <label class="full">
+                <span>Family Source IDs</span>
+                <input name="family_contacts.source_ids" required placeholder="family_intake_form" />
+                <small class="field-hint" data-hint-for="family_contacts.source_ids"></small>
               </label>
             </div>
             <div class="security-grid">
               <label class="toggle">
                 <span>是否有传染病相关情况</span>
-                <input type="checkbox" name="communicable_disease" />
-                <small class="field-hint" data-hint-for="communicable_disease"></small>
+                <input type="checkbox" name="security_background.yes_no_answers.communicable_disease" />
+                <small class="field-hint" data-hint-for="security_background.yes_no_answers.communicable_disease"></small>
               </label>
               <label class="toggle">
                 <span>是否有逮捕或犯罪记录</span>
-                <input type="checkbox" name="arrest_history" />
-                <small class="field-hint" data-hint-for="arrest_history"></small>
+                <input type="checkbox" name="security_background.yes_no_answers.arrest_history" />
+                <small class="field-hint" data-hint-for="security_background.yes_no_answers.arrest_history"></small>
+              </label>
+            </div>
+            <div class="grid two">
+              <label class="full">
+                <span>Security Explanations JSON</span>
+                <textarea name="security_background.explanations" rows="4" placeholder='{"arrest_history":"Explain if yes"}'></textarea>
+                <small class="field-hint" data-hint-for="security_background.explanations"></small>
+              </label>
+              <label class="full">
+                <span>Security Source IDs</span>
+                <input name="security_background.source_ids" required placeholder="security_review_form" />
+                <small class="field-hint" data-hint-for="security_background.source_ids"></small>
+              </label>
+              <label class="full">
+                <span>Evidence Catalog JSON</span>
+                <textarea name="evidence_catalog" rows="8" placeholder='[{"id":"passport_scan","kind":"passport","description":"PRC passport bio page scan."}]'></textarea>
+                <small class="field-hint" data-hint-for="evidence_catalog"></small>
               </label>
             </div>
             <div class="form-actions compact">
-              <button id="manual-submit" type="submit" class="primary">用手填内容整理</button>
+              <button id="manual-submit" type="submit" class="primary">用手填内容生成 dossier</button>
             </div>
           </form>
 

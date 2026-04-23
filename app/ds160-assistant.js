@@ -5,7 +5,7 @@ const state = {
   currentPageId: null,
   completed: {},
   serverConnected: false,
-  intakeLoaded: false,
+  dossierLoaded: false,
 };
 
 const topSteps = document.getElementById("top-steps");
@@ -61,7 +61,7 @@ function renderEmptyState() {
   pageNav.innerHTML = `
     <section class="flow-section">
       <div class="flow-section-title">先导入资料</div>
-      <div class="summary-card">导入采集页生成的资料文件后，系统才会生成当前申请的页面清单。</div>
+      <div class="summary-card">导入采集页生成的 full dossier 文件后，系统才会生成当前申请的页面清单。</div>
     </section>
   `;
   pageTitle.textContent = "等待资料";
@@ -69,7 +69,7 @@ function renderEmptyState() {
   metricReview.textContent = "0";
   metricBlocked.textContent = "0";
   fieldList.innerHTML = `<article class="field-card"><header><strong>执行器未激活</strong><span class="token planned">等待导入</span></header><div class="field-meta">这个页面只负责执行填表，不能直接采集申请资料。</div></article>`;
-  reviewList.innerHTML = `<article class="review-card"><strong>导入资料文件后，这里会显示需要确认或补充的内容。</strong></article>`;
+  reviewList.innerHTML = `<article class="review-card"><strong>导入 dossier 文件后，这里会显示需要确认或补充的内容。</strong></article>`;
   notesList.innerHTML = `<article class="review-card"><strong>建议先在采集页整理资料，再回到这里导入。</strong></article>`;
 }
 
@@ -247,7 +247,7 @@ async function checkServerStatus() {
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     state.serverConnected = data.connected;
-    state.intakeLoaded = Boolean(data.intake_loaded);
+    state.dossierLoaded = Boolean(data.dossier_document_loaded);
     if (!data.connected) {
       serverStatus.textContent = "未连接浏览器";
       serverStatus.style.color = "var(--c-warn, #f5a623)";
@@ -258,7 +258,7 @@ async function checkServerStatus() {
       serverStatus.textContent = "已连接 ✓";
       serverStatus.style.color = "var(--c-ok, #6fcf97)";
     }
-    if (data.intake_loaded) {
+    if (data.dossier_document_loaded) {
       intakeDocStatus.textContent = "资料文件已载入。";
       if (!currentBundle()) {
         await fetchBundle();
@@ -275,7 +275,7 @@ async function checkServerStatus() {
 async function loadIntakeDocument() {
   const file = intakeFile.files?.[0];
   if (!file) {
-    showFillResult(false, "缺少文件", "请选择一份资料 JSON 文档。支持 intake-v1 和完整 dossier。");
+    showFillResult(false, "缺少文件", "请选择一份 full dossier JSON 文档。");
     return;
   }
   loadIntakeButton.disabled = true;
@@ -284,7 +284,7 @@ async function loadIntakeDocument() {
   try {
     const text = await file.text();
     const payload = JSON.parse(text);
-    const res = await fetch(`${SERVER_BASE}/intake-document`, {
+    const res = await fetch(`${SERVER_BASE}/dossier-document`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

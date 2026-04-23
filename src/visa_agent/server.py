@@ -20,16 +20,16 @@ from visa_agent.browser.live_form_fill import (
     fill_current_supported_page,
     save_current_page,
 )
-from visa_agent.draft_bundle import build_draft_bundle
-from visa_agent.intake_contract import intake_field_errors, load_intake_schema, normalized_intake_payload, validate_intake_payload
-from visa_agent.intake import (
-    ApplicantIntake,
-    build_dossier_from_intake,
+from visa_agent.dossier_contract import (
+    dossier_field_errors,
     dossier_to_dict,
-    intake_payload_to_dossier,
+    load_dossier_schema,
+    missing_required_dossier_fields,
+    validate_dossier_payload,
 )
+from visa_agent.draft_bundle import build_draft_bundle
 from visa_agent.mapping import map_dossier_to_ds160
-from visa_agent.vision_intake import VisionUploadedDocument, build_prompt_text, extract_intake_from_documents, vision_document_specs
+from visa_agent.vision_intake import VisionUploadedDocument, build_prompt_text, extract_dossier_from_documents, vision_document_specs
 from visa_agent.page_ids import PAGE_ID_NORMALIZE
 from visa_agent.planner import build_execution_plan
 from visa_agent.schema import load_dossier, load_dossier_payload
@@ -43,8 +43,7 @@ DOSSIER_PATH = os.environ.get(
     "DOSSIER_PATH",
     str(Path(__file__).parent.parent.parent / "sample_data" / "china_b1b2_sample.json"),
 )
-ACTIVE_INTAKE_DOCUMENT: dict[str, Any] | None = None
-ACTIVE_DOCUMENT_KIND: str | None = None
+ACTIVE_DOSSIER_DOCUMENT: dict[str, Any] | None = None
 
 app = FastAPI(title="DS-160 Local Fill Server", version="1.0.0")
 
@@ -81,7 +80,7 @@ class StatusResponse(BaseModel):
     ceac_tab_found: bool
     dossier_loaded: bool
     dossier_path: str
-    intake_loaded: bool
+    dossier_document_loaded: bool
 
 
 class DetectPageResponse(BaseModel):
@@ -90,42 +89,7 @@ class DetectPageResponse(BaseModel):
     title: str
 
 
-class IntakePreviewRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    surname: str
-    given_names: str
-    native_full_name: str | None = None
-    sex: str
-    marital_status: str
-    date_of_birth: str
-    birth_city: str
-    passport_number: str
-    passport_issue_date: str
-    passport_expiration_date: str
-    trip_purpose: str
-    intended_arrival_date: str
-    intended_length_of_stay_value: str
-    intended_length_of_stay_unit: str
-    payer_name: str
-    us_contact_name: str
-    us_contact_organization: str | None = None
-    us_contact_phone: str
-    us_contact_address_line1: str
-    us_contact_city: str
-    us_contact_state: str
-    us_contact_postal_code: str
-    us_contact_email: str | None = None
-    primary_occupation: str
-    current_employer_name: str
-    current_employer_address: str
-    father_full_name: str
-    mother_full_name: str
-    spouse_full_name: str | None = None
-    communicable_disease: bool = False
-    arrest_history: bool = False
-
-
-class IntakePreviewResponse(BaseModel):
+class DossierPreviewResponse(BaseModel):
     ok: bool
     dossier: dict[str, Any]
     status_counts: dict[str, int]
@@ -136,9 +100,9 @@ class IntakePreviewResponse(BaseModel):
     page_count: int
 
 
-class IntakeDocumentResponse(BaseModel):
+class DossierDocumentResponse(BaseModel):
     ok: bool
-    intake_document: dict[str, Any]
+    dossier_document: dict[str, Any]
     case_id: str
 
 
@@ -147,7 +111,7 @@ class DraftBundleResponse(BaseModel):
     bundle: dict[str, Any]
 
 
-class IntakeSchemaResponse(BaseModel):
+class DossierSchemaResponse(BaseModel):
     ok: bool
     schema_document: dict[str, Any]
 
@@ -177,7 +141,7 @@ class VisionPromptResponse(BaseModel):
 
 class VisionIntakeExtractResponse(BaseModel):
     ok: bool
-    intake_document: dict[str, Any] | None
+    dossier_document: dict[str, Any] | None
     missing_fields: list[str]
     warnings: list[str]
     documents: list[dict[str, Any]]
@@ -194,13 +158,11 @@ class VisionModelResultRequest(BaseModel):
 
 
 def _load_dossier():
-    if ACTIVE_INTAKE_DOCUMENT is not None:
+    if ACTIVE_DOSSIER_DOCUMENT is not None:
         try:
-            if ACTIVE_DOCUMENT_KIND == "dossier":
-                return load_dossier_payload(ACTIVE_INTAKE_DOCUMENT)
-            return intake_payload_to_dossier(validate_intake_payload(ACTIVE_INTAKE_DOCUMENT))
+            return load_dossier_payload(ACTIVE_DOSSIER_DOCUMENT)
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Cannot build dossier from intake document: {exc}")
+            raise HTTPException(status_code=500, detail=f"Cannot build dossier from active document: {exc}")
     try:
         return load_dossier(DOSSIER_PATH)
     except Exception as exc:
@@ -218,7 +180,7 @@ def _has_ceac_tab(tabs: list[dict[str, Any]]) -> bool:
     return any("ceac.state.gov" in (t.get("url") or "") for t in tabs)
 
 
-def _build_preview_payload(dossier) -> IntakePreviewResponse:
+def _build_preview_payload(dossier) -> DossierPreviewResponse:
     mapped = map_dossier_to_ds160(dossier)
     execution_plan = build_execution_plan(mapped)
     draft_bundle = build_draft_bundle(dossier)
@@ -228,7 +190,7 @@ def _build_preview_payload(dossier) -> IntakePreviewResponse:
     review_items = [field.to_dict() for field in mapped if field.status == "needs_review"]
     blocked_items = [field.to_dict() for field in mapped if field.status == "blocked"]
     top_fill_fields = [field.to_dict() for field in mapped if field.status == "ready"][:8]
-    return IntakePreviewResponse(
+    return DossierPreviewResponse(
         ok=True,
         dossier=dossier_to_dict(dossier),
         status_counts=status_counts,
@@ -240,25 +202,10 @@ def _build_preview_payload(dossier) -> IntakePreviewResponse:
     )
 
 
-def _coerce_active_document(payload: dict[str, Any]) -> tuple[dict[str, Any], str, str]:
-    if _looks_like_full_dossier(payload):
-        dossier = load_dossier_payload(payload)
-        return payload, dossier.case_id, "dossier"
-    intake_document = validate_intake_payload(payload)
-    dossier = intake_payload_to_dossier(intake_document)
-    return intake_document, dossier.case_id, "intake"
-
-
-def _looks_like_full_dossier(payload: dict[str, Any]) -> bool:
-    required_sections = {
-        "case_id",
-        "identity",
-        "travel_plan",
-        "employment_education",
-        "family_contacts",
-        "security_background",
-    }
-    return required_sections.issubset(payload.keys())
+def _coerce_active_document(payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    dossier_payload = validate_dossier_payload(payload)
+    dossier = load_dossier_payload(dossier_payload)
+    return dossier_payload, dossier.case_id
 
 
 # Map from page_id (as used in the frontend bundle) to fill function
@@ -287,7 +234,7 @@ def get_status():
         ceac_tab_found=_has_ceac_tab(tabs),
         dossier_loaded=dossier_ok,
         dossier_path=DOSSIER_PATH,
-        intake_loaded=ACTIVE_INTAKE_DOCUMENT is not None,
+        dossier_document_loaded=ACTIVE_DOSSIER_DOCUMENT is not None,
     )
 
 
@@ -308,52 +255,52 @@ def get_detect_page():
         raise HTTPException(status_code=503, detail=str(exc))
 
 
-@app.post("/intake/preview", response_model=IntakePreviewResponse)
-def post_intake_preview(req: IntakePreviewRequest):
-    """Build a dossier from the minimal intake form and return preview status."""
+@app.post("/dossier/preview", response_model=DossierPreviewResponse)
+def post_dossier_preview(req: dict[str, Any]):
+    """Validate a full dossier payload and return preview status."""
     try:
-        payload = validate_intake_payload(req.model_dump())
-        dossier = build_dossier_from_intake(ApplicantIntake(**payload))
+        payload = validate_dossier_payload(dict(req))
+        dossier = load_dossier_payload(payload)
         return _build_preview_payload(dossier)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@app.get("/intake-schema", response_model=IntakeSchemaResponse)
-def get_intake_schema():
-    """Return the canonical intake schema used by both intake and execution flows."""
-    return IntakeSchemaResponse(ok=True, schema_document=load_intake_schema())
+@app.get("/dossier-schema", response_model=DossierSchemaResponse)
+def get_dossier_schema():
+    """Return the canonical dossier schema used by intake and execution flows."""
+    return DossierSchemaResponse(ok=True, schema_document=load_dossier_schema())
 
 
-@app.post("/intake-document", response_model=IntakeDocumentResponse)
-def post_intake_document(req: IntakePreviewRequest | dict[str, Any]):
-    """Set the active intake document used by the fill assistant."""
-    global ACTIVE_INTAKE_DOCUMENT, ACTIVE_DOCUMENT_KIND
-    payload = req.model_dump() if isinstance(req, BaseModel) else dict(req)
-    ACTIVE_INTAKE_DOCUMENT, case_id, ACTIVE_DOCUMENT_KIND = _coerce_active_document(payload)
-    return IntakeDocumentResponse(
+@app.post("/dossier-document", response_model=DossierDocumentResponse)
+def post_dossier_document(req: dict[str, Any]):
+    """Set the active dossier document used by the fill assistant."""
+    global ACTIVE_DOSSIER_DOCUMENT
+    payload = dict(req)
+    ACTIVE_DOSSIER_DOCUMENT, case_id = _coerce_active_document(payload)
+    return DossierDocumentResponse(
         ok=True,
-        intake_document=ACTIVE_INTAKE_DOCUMENT,
+        dossier_document=ACTIVE_DOSSIER_DOCUMENT,
         case_id=case_id,
     )
 
 
-@app.get("/intake-document", response_model=IntakeDocumentResponse)
-def get_intake_document():
-    """Return the currently loaded intake document."""
-    if ACTIVE_INTAKE_DOCUMENT is None:
-        raise HTTPException(status_code=404, detail="No intake document loaded")
+@app.get("/dossier-document", response_model=DossierDocumentResponse)
+def get_dossier_document():
+    """Return the currently loaded dossier document."""
+    if ACTIVE_DOSSIER_DOCUMENT is None:
+        raise HTTPException(status_code=404, detail="No dossier document loaded")
     dossier = _load_dossier()
-    return IntakeDocumentResponse(
+    return DossierDocumentResponse(
         ok=True,
-        intake_document=ACTIVE_INTAKE_DOCUMENT,
+        dossier_document=ACTIVE_DOSSIER_DOCUMENT,
         case_id=dossier.case_id,
     )
 
 
 @app.get("/draft-bundle", response_model=DraftBundleResponse)
 def get_draft_bundle():
-    """Build the assistant bundle from the active intake document or legacy dossier."""
+    """Build the assistant bundle from the active dossier document or legacy dossier."""
     dossier = _load_dossier()
     return DraftBundleResponse(ok=True, bundle=build_draft_bundle(dossier))
 
@@ -376,14 +323,14 @@ def post_vision_prompt(req: VisionIntakeExtractRequest):
         )
         for item in req.documents
     ]
-    return VisionPromptResponse(ok=True, prompt_text=build_prompt_text(documents, load_intake_schema()))
+    return VisionPromptResponse(ok=True, prompt_text=build_prompt_text(documents, load_dossier_schema()))
 
 
 @app.post("/vision-intake/extract", response_model=VisionIntakeExtractResponse)
 def post_vision_extract(req: VisionIntakeExtractRequest):
-    """Run vision-model extraction over uploaded images and attempt to build the intake-v1 JSON document."""
+    """Run vision-model extraction over uploaded images and attempt to build the full dossier JSON document."""
     try:
-        result = extract_intake_from_documents(
+        result = extract_dossier_from_documents(
             [
                 VisionUploadedDocument(
                     kind=item.kind,
@@ -393,7 +340,7 @@ def post_vision_extract(req: VisionIntakeExtractRequest):
                 )
                 for item in req.documents
             ],
-            schema=load_intake_schema(),
+            schema=load_dossier_schema(),
         )
         return VisionIntakeExtractResponse(ok=True, **result.to_dict())
     except Exception as exc:
@@ -402,26 +349,22 @@ def post_vision_extract(req: VisionIntakeExtractRequest):
 
 @app.post("/vision-intake/validate", response_model=VisionIntakeExtractResponse)
 def post_vision_validate(req: VisionModelResultRequest):
-    """Validate a manually obtained vision-model result and convert it into the intake result shape."""
+    """Validate a manually obtained vision-model result and convert it into the dossier result shape."""
     try:
-        payload = normalized_intake_payload(req.result)
-        missing_fields = [
-            field
-            for field, value in payload.items()
-            if field in load_intake_schema().get("required", []) and value in (None, "")
-        ]
+        payload = dict(req.result)
+        missing_fields = missing_required_dossier_fields(payload)
         warnings: list[str] = []
-        intake_document = None
+        dossier_document = None
         if not missing_fields:
             try:
-                intake_document = validate_intake_payload(payload)
+                dossier_document = validate_dossier_payload(payload)
             except Exception as exc:
-                missing_fields = list(intake_field_errors(payload).keys())
+                missing_fields = list(dossier_field_errors(payload).keys())
                 warnings.append(str(exc))
-                intake_document = None
+                dossier_document = None
         return VisionIntakeExtractResponse(
             ok=True,
-            intake_document=intake_document,
+            dossier_document=dossier_document,
             missing_fields=missing_fields,
             warnings=warnings,
             documents=[],
