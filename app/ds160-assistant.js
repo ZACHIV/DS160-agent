@@ -6,23 +6,18 @@ const state = {
   completed: {},
   serverConnected: false,
   dossierLoaded: false,
+  logs: [],
 };
 
-const topSteps = document.getElementById("top-steps");
 const pageNav = document.getElementById("page-nav");
 const summary = document.getElementById("summary");
 const pageTitle = document.getElementById("page-title");
-const fieldList = document.getElementById("field-list");
-const reviewList = document.getElementById("review-list");
-const notesList = document.getElementById("notes-list");
 const metricFill = document.getElementById("metric-fill");
 const metricReview = document.getElementById("metric-review");
 const metricBlocked = document.getElementById("metric-blocked");
 const serverStatus = document.getElementById("server-status");
 const fillResult = document.getElementById("fill-result");
 const fillButton = document.getElementById("fill-page");
-const saveButton = document.getElementById("save-page");
-const resetButton = document.getElementById("reset-page");
 const intakeFile = document.getElementById("intake-file");
 const loadIntakeButton = document.getElementById("load-intake");
 const intakeDocStatus = document.getElementById("intake-doc-status");
@@ -38,16 +33,34 @@ function getPage(pageId) {
 }
 
 
-function showFillResult(ok, message, detail) {
-  fillResult.style.display = "block";
-  fillResult.className = "fill-result " + (ok ? "fill-ok" : "fill-err");
-  fillResult.innerHTML = `<strong>${message}</strong>${detail ? `<div class="fill-detail">${detail}</div>` : ""}`;
-  clearTimeout(fillResult._timer);
-  if (ok) {
-    fillResult._timer = setTimeout(() => {
-      fillResult.style.display = "none";
-    }, 5000);
-  }
+function pushLog(level, title, detail) {
+  const timestamp = new Date().toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  state.logs.unshift({ level, title, detail, timestamp });
+  state.logs = state.logs.slice(0, 12);
+  renderLogs();
+}
+
+
+function renderLogs() {
+  fillResult.innerHTML = state.logs.length
+    ? state.logs
+        .map(
+          (item) => `
+            <article class="terminal-line ${item.level}">
+              <header>
+                <strong>${item.title}</strong>
+                <span>${item.timestamp}</span>
+              </header>
+              <div class="terminal-detail">${item.detail || "无附加信息"}</div>
+            </article>
+          `
+        )
+        .join("")
+    : `<article class="terminal-line idle"><header><strong>空</strong><span>--:--:--</span></header><div class="terminal-detail">--</div></article>`;
 }
 
 
@@ -55,22 +68,20 @@ function renderEmptyState() {
   summary.innerHTML = `
     <div class="summary-card">
       <span class="eyebrow">状态</span>
-      <strong>等待导入资料文件</strong>
+      <strong>未导入</strong>
     </div>
   `;
   pageNav.innerHTML = `
     <section class="flow-section">
-      <div class="flow-section-title">先导入资料</div>
-      <div class="summary-card">导入采集页生成的 full dossier 文件后，系统才会生成当前申请的页面清单。</div>
+      <div class="flow-section-title">页面</div>
+      <div class="summary-card">--</div>
     </section>
   `;
-  pageTitle.textContent = "等待资料";
+  pageTitle.textContent = "--";
   metricFill.textContent = "0";
   metricReview.textContent = "0";
   metricBlocked.textContent = "0";
-  fieldList.innerHTML = `<article class="field-card"><header><strong>执行器未激活</strong><span class="token planned">等待导入</span></header><div class="field-meta">这个页面只负责执行填表，不能直接采集申请资料。</div></article>`;
-  reviewList.innerHTML = `<article class="review-card"><strong>导入 dossier 文件后，这里会显示需要确认或补充的内容。</strong></article>`;
-  notesList.innerHTML = `<article class="review-card"><strong>建议先在采集页整理资料，再回到这里导入。</strong></article>`;
+  renderLogs();
 }
 
 
@@ -91,17 +102,6 @@ function renderSummary() {
       <strong>${pages} / ${hardStops.length}</strong>
     </div>
   `;
-}
-
-
-function renderTopSteps() {
-  const bundle = currentBundle();
-  topSteps.innerHTML = bundle.top_steps
-    .map((step, index) => {
-      const active = index === 0 ? "active" : "";
-      return `<div class="top-step ${active}">${step.label}</div>`;
-    })
-    .join("");
 }
 
 
@@ -141,73 +141,10 @@ function renderNav() {
 }
 
 
-function renderFields(page) {
+function renderMetrics(page) {
   metricFill.textContent = page.autofill_count;
   metricReview.textContent = page.review_count;
   metricBlocked.textContent = page.blocked_count;
-
-  fieldList.innerHTML = page.fill.length
-    ? page.fill
-        .map(
-          (item) => `
-            <article class="field-card">
-              <header>
-                <strong>${item.field_id}</strong>
-                <span class="token fill">自动填入</span>
-              </header>
-              <div class="field-value">${item.proposed_value ?? "<empty>"}</div>
-              <div class="field-meta">来源：${(item.evidence_refs || []).join(", ") || "未标注"}</div>
-            </article>
-          `
-        )
-        .join("")
-    : `<article class="field-card"><header><strong>${page.label}</strong><span class="token planned">${page.status === "planned" ? "待补充" : "参考页"}</span></header><div class="field-meta">当前页暂时没有可直接填入的资料。</div></article>`;
-}
-
-
-function renderReview(page) {
-  const items = [
-    ...page.review.map((item) => ({ ...item, kind: "review" })),
-    ...page.blocked.map((item) => ({ ...item, kind: "blocked" })),
-  ];
-
-  reviewList.innerHTML = items.length
-    ? items
-        .map(
-          (item) => `
-            <article class="review-card">
-              <header>
-                <strong>${item.field_id}</strong>
-                <span class="token ${item.kind === "review" ? "review" : "blocked"}">
-                  ${item.kind === "review" ? "待确认" : "缺失"}
-                </span>
-              </header>
-              <div class="review-note">${item.notes || "需要人工处理。"}</div>
-            </article>
-          `
-        )
-        .join("")
-    : `<article class="review-card"><strong>当前页没有 review / blocked 项。</strong></article>`;
-}
-
-
-function renderNotes(page) {
-  const notes = page.notes || [];
-  notesList.innerHTML = notes.length
-    ? notes
-        .map(
-          (note) => `
-            <article class="review-card">
-              <header>
-                <strong>${page.label}</strong>
-                <span class="token planned">${page.status.toUpperCase()}</span>
-              </header>
-              <div class="review-note">${note}</div>
-            </article>
-          `
-        )
-        .join("")
-    : `<article class="review-card"><strong>当前页没有额外说明。</strong></article>`;
 }
 
 
@@ -219,12 +156,10 @@ function render() {
   const page = getPage(state.currentPageId);
   if (!page) return;
   pageTitle.textContent = `${page.label}${state.completed[page.page_id] ? " · 已完成预填" : ""}`;
-  renderTopSteps();
   renderSummary();
   renderNav();
-  renderFields(page);
-  renderReview(page);
-  renderNotes(page);
+  renderMetrics(page);
+  renderLogs();
 }
 
 
@@ -237,6 +172,7 @@ async function fetchBundle() {
   state.bundle = data.bundle;
   state.currentPageId = data.bundle.pages[0]?.page_id || null;
   state.completed = {};
+  pushLog("info", "Bundle", `${data.bundle.pages.length} pages`);
   render();
 }
 
@@ -259,7 +195,7 @@ async function checkServerStatus() {
       serverStatus.style.color = "var(--c-ok, #6fcf97)";
     }
     if (data.dossier_document_loaded) {
-      intakeDocStatus.textContent = "资料文件已载入。";
+      intakeDocStatus.textContent = "已导入";
       if (!currentBundle()) {
         await fetchBundle();
       }
@@ -275,12 +211,12 @@ async function checkServerStatus() {
 async function loadIntakeDocument() {
   const file = intakeFile.files?.[0];
   if (!file) {
-    showFillResult(false, "缺少文件", "请选择一份 full dossier JSON 文档。");
+    pushLog("error", "文件", "未选择");
     return;
   }
   loadIntakeButton.disabled = true;
   loadIntakeButton.textContent = "导入中…";
-  intakeDocStatus.textContent = `正在载入 ${file.name} …`;
+  intakeDocStatus.textContent = "导入中";
   try {
     const text = await file.text();
     const payload = JSON.parse(text);
@@ -293,15 +229,15 @@ async function loadIntakeDocument() {
     if (!res.ok) {
       throw new Error(data.detail || "导入资料文档失败");
     }
-      intakeDocStatus.textContent = `${file.name} 已导入。`;
+    intakeDocStatus.textContent = "已导入";
     await fetchBundle();
-    showFillResult(true, "导入成功", "已根据资料 JSON 构建执行 bundle。");
+    pushLog("success", "导入", file.name);
   } catch (error) {
-    showFillResult(false, "导入失败", error.message || "请检查 JSON 格式");
-    intakeDocStatus.textContent = "导入失败，请检查 schema 和服务状态。";
+    pushLog("error", "导入失败", error.message || "失败");
+    intakeDocStatus.textContent = "导入失败";
   } finally {
     loadIntakeButton.disabled = false;
-    loadIntakeButton.textContent = "导入资料 JSON";
+    loadIntakeButton.textContent = "导入 JSON";
     checkServerStatus();
   }
 }
@@ -311,7 +247,7 @@ loadIntakeButton.addEventListener("click", loadIntakeDocument);
 
 fillButton.addEventListener("click", async () => {
   if (!currentBundle()) {
-    showFillResult(false, "尚未导入资料", "请先导入一份资料 JSON 文件。");
+    pushLog("error", "填入", "未导入");
     return;
   }
   fillButton.disabled = true;
@@ -326,41 +262,22 @@ fillButton.addEventListener("click", async () => {
     if (res.ok && data.ok) {
       state.completed[state.currentPageId] = true;
       render();
-      showFillResult(true, `填入成功 (${data.page_key})`, `已填: ${data.filled.join(", ") || "无"} | 缺失: ${data.missing.join(", ") || "无"}`);
+      pushLog(
+        "success",
+        `填入成功 (${data.page_key})`,
+        `已填: ${data.filled.join(", ") || "无"} | 缺失: ${data.missing.join(", ") || "无"}`
+      );
     } else {
       const msg = data.detail || data.message || "填入失败";
-      showFillResult(false, "填入失败", msg);
+      pushLog("error", "填入失败", msg);
     }
   } catch {
-    showFillResult(false, "网络错误", "请确认本地服务已启动：python -m visa_agent.server");
+    pushLog("error", "网络错误", "服务未启动");
   } finally {
     fillButton.disabled = false;
-    fillButton.textContent = "一键填入当前页";
+    fillButton.textContent = "一键填入";
     checkServerStatus();
   }
-});
-
-
-saveButton.addEventListener("click", async () => {
-  saveButton.disabled = true;
-  saveButton.textContent = "保存中…";
-  try {
-    const res = await fetch(`${SERVER_BASE}/save-page`, { method: "POST" });
-    const data = await res.json();
-    showFillResult(data.ok, data.ok ? "保存成功" : "保存按钮未找到", JSON.stringify(data.payload || {}));
-  } catch {
-    showFillResult(false, "网络错误", "请确认本地服务已启动");
-  } finally {
-    saveButton.disabled = false;
-    saveButton.textContent = "保存当前页";
-  }
-});
-
-
-resetButton.addEventListener("click", () => {
-  delete state.completed[state.currentPageId];
-  fillResult.style.display = "none";
-  render();
 });
 
 
