@@ -18,6 +18,8 @@ const metricBlocked = document.getElementById("metric-blocked");
 const serverStatus = document.getElementById("server-status");
 const fillResult = document.getElementById("fill-result");
 const fillButton = document.getElementById("fill-page");
+const fillContinueButton = document.getElementById("fill-continue");
+const fillAllButton = document.getElementById("fill-all");
 const intakeFile = document.getElementById("intake-file");
 const loadIntakeButton = document.getElementById("load-intake");
 const intakeDocStatus = document.getElementById("intake-doc-status");
@@ -278,6 +280,128 @@ fillButton.addEventListener("click", async () => {
     fillButton.textContent = "一键填入";
     checkServerStatus();
   }
+});
+
+
+function disableFillButtons() {
+  fillButton.disabled = true;
+  fillContinueButton.disabled = true;
+  fillAllButton.disabled = true;
+}
+
+function enableFillButtons() {
+  fillButton.disabled = false;
+  fillContinueButton.disabled = false;
+  fillAllButton.disabled = false;
+  fillButton.textContent = "一键填入";
+  fillContinueButton.textContent = "填完并翻页";
+  fillAllButton.textContent = "一键填完全部";
+}
+
+
+fillContinueButton.addEventListener("click", async () => {
+  if (!currentBundle() || !state.currentPageId) {
+    pushLog("error", "翻页", "未导入或未选中页面");
+    return;
+  }
+  disableFillButtons();
+  fillContinueButton.textContent = "填入翻页中…";
+  try {
+    const res = await fetch(`${SERVER_BASE}/fill-and-continue`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page_id: state.currentPageId }),
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      state.completed[state.currentPageId] = true;
+      if (data.new_page_key) {
+        state.currentPageId = data.new_page_key;
+      }
+      render();
+      pushLog(
+        "success",
+        `填完并翻页 (${data.page_key} → ${data.new_page_key || "?"})`,
+        `已填: ${data.filled.join(", ") || "无"} | 缺失: ${data.missing.join(", ") || "无"}`
+      );
+    } else {
+      const msg = data.detail || data.message || "填完翻页失败";
+      pushLog("error", "翻页失败", msg);
+    }
+  } catch {
+    pushLog("error", "网络错误", "服务未启动");
+  } finally {
+    enableFillButtons();
+    checkServerStatus();
+  }
+});
+
+
+fillAllButton.addEventListener("click", async () => {
+  if (!currentBundle()) {
+    pushLog("error", "全部填入", "未导入");
+    return;
+  }
+  const implementePages = currentBundle().pages.filter(
+    (page) => page.status === "implemented"
+  );
+  if (!implementePages.length) {
+    pushLog("error", "全部填入", "没有可填入的页面");
+    return;
+  }
+  const startIndex = Math.max(
+    0,
+    implementePages.findIndex((page) => page.page_id === state.currentPageId)
+  );
+
+  disableFillButtons();
+  fillAllButton.textContent = "全部填入中…";
+  pushLog("info", "全部填入", `从第 ${startIndex + 1}/${implementePages.length} 页开始`);
+
+  let stopped = false;
+  for (let index = startIndex; index < implementePages.length; index += 1) {
+    const page = implementePages[index];
+    state.currentPageId = page.page_id;
+    render();
+
+    fillAllButton.textContent = `填入中 ${index + 1}/${implementePages.length}…`;
+    try {
+      const res = await fetch(`${SERVER_BASE}/fill-and-continue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_id: page.page_id }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        state.completed[page.page_id] = true;
+        if (data.new_page_key) {
+          state.currentPageId = data.new_page_key;
+        }
+        render();
+        pushLog(
+          "success",
+          `第 ${index + 1}/${implementePages.length} 页 (${data.page_key})`,
+          `已填: ${data.filled.join(", ") || "无"} | 翻到: ${data.new_page_key || "?"}`
+        );
+      } else {
+        const msg = data.detail || data.message || "填入失败";
+        pushLog("error", `停在 ${page.label}`, msg);
+        stopped = true;
+        break;
+      }
+    } catch {
+      pushLog("error", "网络错误", `停在 ${page.label}`);
+      stopped = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+
+  if (!stopped) {
+    pushLog("success", "全部完成", `${implementePages.length} 页已顺序填入`);
+  }
+  enableFillButtons();
+  checkServerStatus();
 });
 
 

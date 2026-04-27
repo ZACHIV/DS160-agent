@@ -17,6 +17,7 @@ from visa_agent.browser.cdp_client import find_target_websocket_url, list_debug_
 from visa_agent.browser.live_form_fill import (
     _PAGE_FILL_HANDLERS,
     detect_current_page,
+    fill_and_continue,
     fill_current_supported_page,
     save_current_page,
 )
@@ -27,7 +28,7 @@ from visa_agent.dossier_contract import (
 )
 from visa_agent.draft_bundle import build_draft_bundle
 from visa_agent.mapping import map_dossier_to_ds160
-from visa_agent.page_ids import PAGE_ID_NORMALIZE
+from visa_agent.page_ids import PAGE_ID_NORMALIZE, bundle_page_id
 from visa_agent.planner import build_execution_plan
 from visa_agent.schema import load_dossier, load_dossier_payload
 
@@ -65,6 +66,15 @@ class FillPageRequest(BaseModel):
 class FillPageResponse(BaseModel):
     ok: bool
     page_key: str
+    filled: list[str]
+    missing: list[str]
+    message: str
+
+
+class FillContinueResponse(BaseModel):
+    ok: bool
+    page_key: str
+    new_page_key: str | None
     filled: list[str]
     missing: list[str]
     message: str
@@ -315,6 +325,45 @@ def post_fill_page(req: FillPageRequest):
             filled=filled,
             missing=missing,
             message=f"Filled {len(filled)} fields, {len(missing)} missing.",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/fill-and-continue", response_model=FillContinueResponse)
+def post_fill_and_continue(req: FillPageRequest):
+    """Fill the current page, save, and click Next to advance to the next page."""
+    tabs = _check_cdp()
+    if not tabs:
+        raise HTTPException(status_code=503, detail="Chrome not reachable on CDP port. Launch Chrome with --remote-debugging-port=9222")
+
+    dossier = _load_dossier()
+
+    canonical = PAGE_ID_NORMALIZE.get(req.page_id, req.page_id) if req.page_id else None
+    if not canonical:
+        try:
+            detected = detect_current_page()
+            canonical = detected.payload.get("page_key")
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Cannot detect current page: {exc}")
+
+    if canonical not in _PAGE_FILL_HANDLERS:
+        raise HTTPException(status_code=400, detail=f"No fill handler for page {canonical}")
+
+    try:
+        result = fill_and_continue(canonical, dossier)
+        fill_payload = result.get("fill_payload") or {}
+        filled = list(fill_payload.get("filled") or [])
+        missing = list(fill_payload.get("missing") or [])
+        raw_new_key = result.get("new_page_key")
+        new_page_key = bundle_page_id(raw_new_key) if raw_new_key else None
+        return FillContinueResponse(
+            ok=bool(result.get("fill_ok") and result.get("next_ok")),
+            page_key=canonical,
+            new_page_key=new_page_key,
+            filled=filled,
+            missing=missing,
+            message=f"Filled {len(filled)} fields, {len(missing)} missing. Next page: {new_page_key or 'unknown'}",
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

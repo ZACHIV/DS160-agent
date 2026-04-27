@@ -841,6 +841,84 @@ def detect_current_page() -> VisibleControlResult:
     return VisibleControlResult(action="detect_current_page", ok=True, payload=payload)
 
 
+def click_next_and_wait(port: int = 9222, timeout_s: float = 30.0) -> VisibleControlResult:
+    ws_url = find_target_websocket_url("ceac.state.gov/GenNIV/General/complete/")
+    probe_expression = (
+        "(() => ({ url: location.href, title: document.title }))()"
+    )
+    before = _runtime_eval(ws_url, probe_expression)
+    before_url = dict(before.get("value") or {}).get("url") or ""
+
+    click_expression = (
+        "(() => { "
+        "const btn = document.querySelector('#ctl00_SiteContentPlaceHolder_UpdateButton2'); "
+        "if (!btn) return {status: 'NEXT_BUTTON_NOT_FOUND'}; "
+        "btn.click(); "
+        "return {status: 'NEXT_CLICKED'}; "
+        "})()"
+    )
+    click_result = _runtime_eval(ws_url, click_expression)
+    click_payload = dict(click_result.get("value") or {})
+    if click_payload.get("status") != "NEXT_CLICKED":
+        return VisibleControlResult(
+            action="click_next_and_wait",
+            ok=False,
+            payload={"status": click_payload.get("status"), "before_url": before_url},
+        )
+
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        try:
+            new_ws_url = find_target_websocket_url("ceac.state.gov/GenNIV/General/complete/")
+            probe = _runtime_eval(new_ws_url, probe_expression)
+            new_url = dict(probe.get("value") or {}).get("url") or ""
+            if new_url and new_url != before_url:
+                new_page_key = "unsupported"
+                title = dict(probe.get("value") or {}).get("title") or ""
+                for key, matchers in PAGE_MATCHERS.items():
+                    if any(matcher in new_url or matcher in title for matcher in matchers):
+                        new_page_key = key
+                        break
+                return VisibleControlResult(
+                    action="click_next_and_wait",
+                    ok=True,
+                    payload={
+                        "before_url": before_url,
+                        "new_url": new_url,
+                        "new_page_key": new_page_key,
+                    },
+                )
+        except RuntimeError:
+            pass
+        time.sleep(1.0)
+
+    return VisibleControlResult(
+        action="click_next_and_wait",
+        ok=False,
+        payload={"status": "TIMEOUT", "before_url": before_url},
+    )
+
+
+def fill_and_continue(
+    page_key: str,
+    dossier: ApplicantDossier,
+    save_wait_s: float = 2.0,
+) -> dict[str, object]:
+    handler = _PAGE_FILL_HANDLERS.get(page_key)
+    fill_result = None
+    if handler:
+        fill_result = handler(dossier)
+    time.sleep(save_wait_s)
+    next_result = click_next_and_wait()
+    return {
+        "page_key": page_key,
+        "fill_ok": bool(fill_result and fill_result.ok),
+        "fill_payload": fill_result.payload if fill_result else {},
+        "next_ok": next_result.ok,
+        "new_page_key": next_result.payload.get("new_page_key"),
+    }
+
+
 _PAGE_FILL_HANDLERS = {
     "personal1": fill_personal1_page,
     "personal2": fill_personal2_page,
