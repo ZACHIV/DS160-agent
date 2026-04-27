@@ -9,7 +9,13 @@ from visa_agent.planner import ExecutionPlan, PlannedAction
 
 PAGE_ORDER = [
     "personal_page_1",
+    "personal_page_2",
     "travel_page",
+    "travel_companions_page",
+    "previous_us_travel_page",
+    "address_phone_page",
+    "passport_page",
+    "us_contact_page",
     "work_education_present_page",
     "work_education_previous_page",
     "work_education_additional_page",
@@ -31,14 +37,42 @@ PAGE_SAVE_CHECKPOINTS = {
 
 
 def _page_for_field(field_id: str) -> str:
-    if field_id.startswith("identity.") or field_id.startswith("passport."):
+    if field_id.startswith("identity."):
+        if field_id in (
+            "identity.other_nationality", "identity.permanent_resident_other_country",
+            "identity.national_id_number", "identity.us_social_security_number",
+            "identity.us_taxpayer_id_number",
+        ):
+            return "personal_page_2"
         return "personal_page_1"
+    if field_id.startswith("passport."):
+        return "passport_page"
+    if field_id.startswith("travel_companions."):
+        return "travel_companions_page"
+    if field_id.startswith("previous_us_travel."):
+        return "previous_us_travel_page"
     if field_id.startswith("travel."):
         return "travel_page"
+    if field_id.startswith("address.") or field_id.startswith("phone.") or field_id.startswith("social."):
+        return "address_phone_page"
     if field_id.startswith("employment."):
+        if field_id.startswith("employment.previous_"):
+            return "work_education_previous_page"
+        if field_id.startswith("employment.school_") or field_id.startswith("employment.major_"):
+            return "work_education_previous_page"
+        if field_id in ("employment.other_education",):
+            return "work_education_previous_page"
+        if field_id.startswith("employment.languages") or field_id.startswith("employment.countries_"):
+            return "work_education_additional_page"
+        if field_id.startswith("employment.clan_") or field_id.startswith("employment.organization_"):
+            return "work_education_additional_page"
+        if field_id.startswith("employment.specialized_") or field_id.startswith("employment.military_"):
+            return "work_education_additional_page"
+        if field_id.startswith("employment.insurgent_"):
+            return "work_education_additional_page"
         return "work_education_present_page"
     if field_id.startswith("family."):
-        if field_id == "family.spouse_full_name":
+        if field_id.startswith("family.spouse_"):
             return "family_spouse_page"
         return "family_relatives_page"
     if field_id.startswith("security."):

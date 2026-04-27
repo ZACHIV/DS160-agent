@@ -102,6 +102,24 @@ _JS_HELPERS = (
     "const r = {filled:[], missing:[]}; "
     "const ok = (name) => r.filled.push(name); "
     "const miss = (name) => r.missing.push(name); "
+    "const vr = {checked:[], mismatches:[]}; "
+    "const vok = (name) => vr.checked.push(name); "
+    "const vmiss = (name, detail) => vr.mismatches.push({field:name, detail}); "
+    "const verifyText = (sel, expected) => { "
+    "  const el = document.querySelector(sel); if(!el) { vmiss(sel,'ELEMENT_NOT_FOUND'); return false; } "
+    "  if(el.value !== expected) { vmiss(sel, `got '${el.value}', expected '${expected}'`); return false; } "
+    "  vok(sel); return true; "
+    "}; "
+    "const verifyRadio = (name, val) => { "
+    "  const el = document.querySelector(`input[name=\"${name}\"][value=\"${val}\"]`); "
+    "  if(!el || !el.checked) { vmiss(name, `radio ${val} not checked`); return false; } "
+    "  vok(name); return true; "
+    "}; "
+    "const verifyCb = (sel, expected) => { "
+    "  const el = document.querySelector(sel); if(!el) { vmiss(sel,'ELEMENT_NOT_FOUND'); return false; } "
+    "  if(el.checked !== expected) { vmiss(sel, `got ${el.checked}, expected ${expected}`); return false; } "
+    "  vok(sel); return true; "
+    "}; "
 )
 
 
@@ -411,10 +429,13 @@ def fill_previous_travel_page(dossier: ApplicantDossier) -> VisibleControlResult
 def fill_address_phone_page(dossier: ApplicantDossier) -> VisibleControlResult:
     ws_url = _find_page_ws_url("address_phone")
     data = _address_phone_defaults(dossier)
+    if data is None:
+        return VisibleControlResult(action="fill_address_phone_page", ok=False,
+                                    payload={"filled": [], "missing": ["personal_contact"],
+                                             "validations": {"checked": [], "mismatches": []}})
     expression = (
         "(() => { "
         + _JS_HELPERS
-        # Home address
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_ADDR_LN1', {json.dumps(data['home_addr1'])}) ? ok('home_addr1') : miss('home_addr1'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_ADDR_LN2', {json.dumps(data['home_addr2'])}) ? ok('home_addr2') : miss('home_addr2'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_ADDR_CITY', {json.dumps(data['home_city'])}) ? ok('home_city') : miss('home_city'); "
@@ -423,25 +444,25 @@ def fill_address_phone_page(dossier: ApplicantDossier) -> VisibleControlResult:
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_ADDR_POSTAL_CD', {json.dumps(data['home_postal'])}) ? ok('home_postal') : miss('home_postal'); "
         + "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbexAPP_ADDR_POSTAL_CD_NA', false) ? ok('home_postal_na_off') : miss('home_postal_na_off'); "
         + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlCountry', {json.dumps(data['home_country'])}) ? ok('home_country') : miss('home_country'); "
-        # Mailing address same as home address
         + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblMailingAddrSame', 'Y') ? ok('mailing_same_yes') : miss('mailing_same_yes'); "
-        # Phones
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_HOME_TEL', {json.dumps(data['primary_phone'])}) ? ok('primary_phone') : miss('primary_phone'); "
         + "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbexAPP_MOBILE_TEL_NA', true) ? ok('secondary_phone_na') : miss('secondary_phone_na'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_BUS_TEL', {json.dumps(data['work_phone'])}) ? ok('work_phone') : miss('work_phone'); "
         + "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbexAPP_BUS_TEL_NA', false) ? ok('work_phone_na_off') : miss('work_phone_na_off'); "
         + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblAddPhone', 'N') ? ok('other_phone_no') : miss('other_phone_no'); "
-        # Email
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_EMAIL_ADDR', {json.dumps(data['email'])}) ? ok('email') : miss('email'); "
         + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblAddEmail', 'N') ? ok('other_email_no') : miss('other_email_no'); "
-        # Social and other platforms
         + "setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_dtlSocial_ctl00_ddlSocialMedia', 'NONE') ? ok('social_none') : miss('social_none'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_dtlSocial_ctl00_tbxSocialMediaIdent', {json.dumps('')}) ? ok('social_ident') : miss('social_ident'); "
         + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblAddSocial', 'N') ? ok('other_platform_no') : miss('other_platform_no'); "
-        "return r; })()"
+        + f"verifyText('#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_ADDR_LN1', {json.dumps(data['home_addr1'])}); "
+        + f"verifyText('#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_ADDR_CITY', {json.dumps(data['home_city'])}); "
+        + f"verifyText('#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_EMAIL_ADDR', {json.dumps(data['email'])}); "
+        "return {filled: r.filled, missing: r.missing, validations: vr}; })()"
     )
     result = _runtime_eval(ws_url, expression)
     payload = dict(result.get("value") or {})
+    payload["_vr"] = payload.pop("validations", {})
     return VisibleControlResult(action="fill_address_phone_page", ok=not payload.get("missing"), payload=payload)
 
 
@@ -668,8 +689,8 @@ def fill_family_relatives_page(dossier: ApplicantDossier) -> VisibleControlResul
     f = dossier.family_contacts
     father_surname, father_given = _split_name_first_surname(f.father_full_name)
     mother_surname, mother_given = _split_name_first_surname(f.mother_full_name)
-    father_dob = _family_relative_mock_dob("father")
-    mother_dob = _family_relative_mock_dob("mother")
+    father_dob = _family_relative_dob("father", dossier) or ""
+    mother_dob = _family_relative_dob("mother", dossier) or ""
     expression = (
         "(() => { "
         + _JS_HELPERS
@@ -1066,22 +1087,20 @@ def _fill_security_questions(page_key: str, questions: list[tuple[str, str, str]
     return VisibleControlResult(action=f"fill_{page_key}_page", ok=not payload.get("missing"), payload=payload)
 
 
-def _address_phone_defaults(dossier: ApplicantDossier) -> dict[str, str]:
-    e = dossier.employment_education
-    line1, city, state, country = _split_employer_address(e.current_employer_address)
-    local_part = ".".join(
-        part.lower() for part in [dossier.identity.surname, dossier.identity.given_names] if part
-    ) or "applicant"
+def _address_phone_defaults(dossier: ApplicantDossier) -> dict[str, str] | None:
+    c = dossier.personal_contact
+    if c is None or not c.home_address_line1:
+        return None
     return {
-        "home_addr1": line1 or "88 Huaihai Middle Road",
-        "home_addr2": "",
-        "home_city": city or "Shanghai",
-        "home_state": state or "Shanghai",
-        "home_postal": "200021",
-        "home_country": country or dossier.identity.birth_country or "CHINA",
-        "primary_phone": _normalize_phone_number("+86-21-5555-8800"),
-        "work_phone": _normalize_phone_number("+86-21-6888-9900"),
-        "email": f"{local_part}@example.cn",
+        "home_addr1": c.home_address_line1 or "",
+        "home_addr2": c.home_address_line2 or "",
+        "home_city": c.home_city or "",
+        "home_state": c.home_state or "",
+        "home_postal": c.home_postal_code or "",
+        "home_country": c.home_country or dossier.identity.birth_country or "CHINA",
+        "primary_phone": _normalize_phone_number(c.primary_phone or "", fallback=""),
+        "work_phone": _normalize_phone_number(c.work_phone or "", fallback=""),
+        "email": c.email or "",
     }
 
 
@@ -1123,84 +1142,92 @@ def _split_name_first_surname(full_name: str | None) -> tuple[str, str]:
     return parts[0], " ".join(parts[1:])
 
 
-def _family_relative_mock_dob(relative: str) -> str:
+def _family_relative_dob(relative: str, dossier: ApplicantDossier) -> str | None:
+    f = dossier.family_contacts
     if relative == "father":
-        return "1965-03-12"
-    return "1968-07-21"
+        return f.father_date_of_birth
+    return f.mother_date_of_birth
 
 
-def _family_spouse_defaults(dossier: ApplicantDossier) -> dict[str, str]:
+def _family_spouse_defaults(dossier: ApplicantDossier) -> dict[str, str] | None:
+    f = dossier.family_contacts
+    if not f.spouse_full_name:
+        return None
     return {
-        "dob": "1992-11-08",
-        "nationality": dossier.identity.nationality or "CHINA",
-        "birth_city": dossier.identity.birth_city or "SHANGHAI",
-        "birth_country": dossier.identity.birth_country or "CHINA",
+        "dob": f.spouse_date_of_birth or "",
+        "nationality": f.spouse_nationality or dossier.identity.nationality or "CHINA",
+        "birth_city": f.spouse_birth_city or dossier.identity.birth_city or "",
+        "birth_country": f.spouse_birth_country or dossier.identity.birth_country or "CHINA",
     }
 
 
-def _work_education_present_defaults(dossier: ApplicantDossier) -> dict[str, str]:
+def _work_education_present_defaults(dossier: ApplicantDossier) -> dict[str, str] | None:
     e = dossier.employment_education
-    addr1, city, state, country = _split_employer_address(e.current_employer_address)
+    if not e.current_employer_name:
+        return None
     return {
         "occupation": _present_occupation_label(e.primary_occupation),
-        "addr1": addr1 or "88 Huaihai Middle Road",
-        "addr2": "",
-        "city": city or "Shanghai",
-        "state": state or "Shanghai",
-        "postal": "200021",
-        "country": country or dossier.identity.birth_country or "CHINA",
-        "phone": _normalize_phone_number("+86-21-6888-9900"),
-        "start_date": "2021-06-01",
-        "duties": "Manage supplier communications, prepare project documents, and coordinate business meetings.",
+        "addr1": e.current_employer_address or "",
+        "addr2": e.current_employer_address_line2 or "",
+        "city": e.employer_city or "",
+        "state": e.employer_state or "",
+        "postal": e.employer_postal_code or "",
+        "country": e.employer_country or dossier.identity.birth_country or "CHINA",
+        "phone": _normalize_phone_number(e.employer_phone or "", fallback=""),
+        "start_date": e.current_employment_start_date or "",
+        "duties": e.current_job_duties or "",
     }
 
 
-def _work_education_previous_defaults(dossier: ApplicantDossier) -> dict[str, str]:
+def _work_education_previous_defaults(dossier: ApplicantDossier) -> dict[str, str] | None:
     e = dossier.employment_education
-    addr1, city, state, country = _split_employer_address(e.current_employer_address)
-    school_name = _sanitize_ds160_name(e.school_name or "SHANGHAI BUSINESS UNIVERSITY")
+    has_prev = e.previous_employer_name
+    has_educ = e.school_name
+    if not has_prev and not has_educ:
+        return None
     return {
-        "prev_employer_name": _sanitize_ds160_name("Shanghai Modern Logistics Co., Ltd."),
-        "prev_employer_addr1": addr1 or "88 Huaihai Middle Road",
+        "prev_employer_name": _sanitize_ds160_name(e.previous_employer_name or ""),
+        "prev_employer_addr1": e.previous_employer_address or "",
         "prev_employer_addr2": "",
-        "prev_employer_city": city or "Shanghai",
-        "prev_employer_state": state or "Shanghai",
-        "prev_employer_postal": "200021",
-        "prev_employer_country": country or dossier.identity.birth_country or "CHINA",
-        "prev_employer_phone": _normalize_phone_number("+86-21-6777-8800"),
-        "prev_job_title": "PROJECT COORDINATOR",
-        "prev_supervisor_surname": "LI",
-        "prev_supervisor_given": "MING",
-        "prev_emp_from": "2018-03-01",
-        "prev_emp_to": "2021-05-31",
-        "prev_emp_duties": "Coordinated supplier schedules, tracked shipments, and prepared internal reports.",
-        "school_name": school_name,
-        "school_addr1": "100 Academic Road",
+        "prev_employer_city": e.previous_employer_city or "",
+        "prev_employer_state": e.previous_employer_state or "",
+        "prev_employer_postal": e.previous_employer_postal_code or "",
+        "prev_employer_country": e.previous_employer_country or dossier.identity.birth_country or "CHINA",
+        "prev_employer_phone": _normalize_phone_number(e.previous_employer_phone or "", fallback=""),
+        "prev_job_title": _sanitize_ds160_name(e.previous_job_title or ""),
+        "prev_supervisor_surname": _sanitize_ds160_name(e.previous_supervisor_surname or ""),
+        "prev_supervisor_given": _sanitize_ds160_name(e.previous_supervisor_given_name or ""),
+        "prev_emp_from": e.previous_employment_start_date or "",
+        "prev_emp_to": e.previous_employment_end_date or "",
+        "prev_emp_duties": e.previous_job_duties or "",
+        "school_name": _sanitize_ds160_name(e.school_name or ""),
+        "school_addr1": e.school_address_line1 or "",
         "school_addr2": "",
-        "school_city": "Shanghai",
-        "school_state": "Shanghai",
-        "school_postal": "200030",
-        "school_country": dossier.identity.birth_country or "CHINA",
-        "school_course": "BUSINESS ADMINISTRATION",
-        "school_from": "2010-09-01",
-        "school_to": "2014-06-30",
+        "school_city": e.school_city or "",
+        "school_state": e.school_state or "",
+        "school_postal": e.school_postal_code or "",
+        "school_country": e.school_country or dossier.identity.birth_country or "CHINA",
+        "school_course": _sanitize_ds160_name(e.major_or_course_of_study or ""),
+        "school_from": e.school_attendance_start_date or "",
+        "school_to": e.school_attendance_end_date or "",
     }
 
 
-def _work_education_additional_defaults() -> dict[str, str]:
+def _work_education_additional_defaults(dossier: ApplicantDossier) -> dict[str, str]:
+    e = dossier.employment_education
     return {
-        "clan_name": "HAN",
-        "language_name": "CHINESE",
-        "country_visited": "SINGAPORE",
-        "organization_name": "SHANGHAI CHAMBER OF COMMERCE",
-        "specialized_skills_expl": "Received standard workplace safety and technical systems training for business operations.",
-        "military_country": "CHINA",
-        "military_branch": "LOGISTICS SUPPORT UNIT",
-        "military_rank": "STAFF MEMBER",
-        "military_specialty": "ADMINISTRATIVE SUPPORT",
-        "military_from": "2014-07-01",
-        "military_to": "2016-06-30",
-        "insurgent_expl": "Required military service only. No involvement with paramilitary or insurgent groups.",
+        "clan_name": e.clan_or_tribe_name or "",
+        "language_name": e.languages or "",
+        "country_visited": e.countries_visited or "",
+        "organization_name": e.organization_memberships or "",
+        "specialized_skills_expl": e.specialized_skills_description or "",
+        "military_country": e.military_service_country or "",
+        "military_branch": e.military_branch or "",
+        "military_rank": e.military_rank or "",
+        "military_specialty": e.military_specialty or "",
+        "military_from": e.military_service_start_date or "",
+        "military_to": e.military_service_end_date or "",
+        "insurgent_expl": e.insurgent_organization_explanation or "",
     }
 
 

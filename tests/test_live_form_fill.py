@@ -10,7 +10,7 @@ from visa_agent.browser.live_form_fill import (
     PREVIOUS_TRAVEL_URL_SUBSTRING,
     _address_phone_defaults,
     _fill_security_questions,
-    _family_relative_mock_dob,
+    _family_relative_dob,
     _family_spouse_defaults,
     _find_page_ws_url,
     _month_abbrev,
@@ -70,29 +70,30 @@ class LiveFormFillTests(unittest.TestCase):
     def test_split_name_first_surname_keeps_first_token_as_surname(self) -> None:
         self.assertEqual(_split_name_first_surname("ZHANG JIANGUO"), ("ZHANG", "JIANGUO"))
 
-    def test_family_relative_mock_dob_is_stable(self) -> None:
-        self.assertEqual(_family_relative_mock_dob("father"), "1965-03-12")
-        self.assertEqual(_family_relative_mock_dob("mother"), "1968-07-21")
+    def test_family_relative_dob_reads_from_dossier(self) -> None:
+        dossier = load_dossier(SAMPLE_PATH)
+        self.assertIsNone(_family_relative_dob("father", dossier))
+        self.assertIsNone(_family_relative_dob("mother", dossier))
 
-    def test_family_spouse_defaults_follow_identity_country(self) -> None:
+    def test_family_spouse_defaults_uses_dossier_data(self) -> None:
         dossier = load_dossier(SAMPLE_PATH)
         defaults = _family_spouse_defaults(dossier)
-        self.assertEqual(defaults["dob"], "1992-11-08")
-        self.assertEqual(defaults["nationality"], "CHINA")
+        self.assertIsNotNone(defaults)
+        self.assertEqual(defaults.get("nationality"), "CHINA")
 
     def test_sanitize_ds160_name_removes_punctuation(self) -> None:
         self.assertEqual(_sanitize_ds160_name("Shanghai Example Trading Co., Ltd."), "SHANGHAI EXAMPLE TRADING CO LTD")
 
-    def test_work_education_previous_defaults_are_populated(self) -> None:
+    def test_work_education_previous_defaults_returns_none_without_data(self) -> None:
         dossier = load_dossier(SAMPLE_PATH)
         defaults = _work_education_previous_defaults(dossier)
-        self.assertEqual(defaults["prev_employer_name"], "SHANGHAI MODERN LOGISTICS CO LTD")
-        self.assertEqual(defaults["school_name"], "SHANGHAI BUSINESS UNIVERSITY")
+        self.assertIsNone(defaults)
 
-    def test_work_education_additional_defaults_are_populated(self) -> None:
-        defaults = _work_education_additional_defaults()
-        self.assertEqual(defaults["clan_name"], "HAN")
-        self.assertEqual(defaults["country_visited"], "SINGAPORE")
+    def test_work_education_additional_defaults_returns_empty_strings(self) -> None:
+        dossier = load_dossier(SAMPLE_PATH)
+        defaults = _work_education_additional_defaults(dossier)
+        self.assertEqual(defaults["clan_name"], "")
+        self.assertEqual(defaults["country_visited"], "")
 
     def test_security_defaults_to_no_without_schema_key(self) -> None:
         dossier = load_dossier(SAMPLE_PATH)
@@ -117,15 +118,10 @@ class LiveFormFillTests(unittest.TestCase):
         self.assertEqual(dossier.identity.surname, "ZHANG")
         self.assertEqual(dossier.identity.birth_country, "CHINA")
 
-    def test_address_phone_defaults_use_stable_mock_values(self) -> None:
+    def test_address_phone_defaults_returns_none_without_contact_data(self) -> None:
         dossier = load_dossier(SAMPLE_PATH)
         defaults = _address_phone_defaults(dossier)
-        self.assertEqual(defaults["home_addr1"], "88 Huaihai Middle Road")
-        self.assertEqual(defaults["home_city"], "Shanghai")
-        self.assertEqual(defaults["home_state"], "Shanghai")
-        self.assertEqual(defaults["primary_phone"], "862155558800")
-        self.assertEqual(defaults["work_phone"], "862168889900")
-        self.assertEqual(defaults["email"], "zhang.wei@example.cn")
+        self.assertIsNone(defaults)
 
     def test_personal1_fill_uses_staged_clicks_before_main_fill(self) -> None:
         dossier = load_dossier(SAMPLE_PATH)

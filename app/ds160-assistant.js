@@ -7,6 +7,7 @@ const state = {
   serverConnected: false,
   dossierLoaded: false,
   logs: [],
+  cancelFillAll: false,
 };
 
 const pageNav = document.getElementById("page-nav");
@@ -20,6 +21,10 @@ const fillResult = document.getElementById("fill-result");
 const fillButton = document.getElementById("fill-page");
 const fillContinueButton = document.getElementById("fill-continue");
 const fillAllButton = document.getElementById("fill-all");
+const cancelFillAllButton = document.getElementById("cancel-fill-all");
+const progressBarContainer = document.getElementById("progress-bar-container");
+const progressBar = document.getElementById("progress-bar");
+const progressText = document.getElementById("progress-text");
 const intakeFile = document.getElementById("intake-file");
 const loadIntakeButton = document.getElementById("load-intake");
 const intakeDocStatus = document.getElementById("intake-doc-status");
@@ -337,6 +342,11 @@ fillContinueButton.addEventListener("click", async () => {
 });
 
 
+cancelFillAllButton.addEventListener("click", () => {
+  state.cancelFillAll = true;
+  pushLog("warn", "取消", "正在停止批量填入…");
+});
+
 fillAllButton.addEventListener("click", async () => {
   if (!currentBundle()) {
     pushLog("error", "全部填入", "未导入");
@@ -355,16 +365,29 @@ fillAllButton.addEventListener("click", async () => {
   );
 
   disableFillButtons();
+  state.cancelFillAll = false;
+  progressBarContainer.style.display = "block";
   fillAllButton.textContent = "全部填入中…";
   pushLog("info", "全部填入", `从第 ${startIndex + 1}/${implementePages.length} 页开始`);
 
   let stopped = false;
   for (let index = startIndex; index < implementePages.length; index += 1) {
+    if (state.cancelFillAll) {
+      pushLog("warn", "已取消", `停在 ${implementePages[index]?.label || "?"}`);
+      stopped = true;
+      break;
+    }
     const page = implementePages[index];
     state.currentPageId = page.page_id;
     render();
 
-    fillAllButton.textContent = `填入中 ${index + 1}/${implementePages.length}…`;
+    const current = index + 1;
+    const total = implementePages.length;
+    const pct = Math.round((current / total) * 100);
+    progressBar.style.width = `${pct}%`;
+    progressText.textContent = `${current} / ${total}`;
+    fillAllButton.textContent = `填入中 ${current}/${total}…`;
+
     try {
       const res = await fetch(`${SERVER_BASE}/fill-and-continue`, {
         method: "POST",
@@ -378,10 +401,12 @@ fillAllButton.addEventListener("click", async () => {
           state.currentPageId = data.new_page_key;
         }
         render();
+        const vr = data.validations || {};
+        const mmCount = (vr.mismatches || []).length;
         pushLog(
           "success",
-          `第 ${index + 1}/${implementePages.length} 页 (${data.page_key})`,
-          `已填: ${data.filled.join(", ") || "无"} | 翻到: ${data.new_page_key || "?"}`
+          `${current}/${total} (${data.page_key})`,
+          `已填: ${data.filled.length} | 校验不匹配: ${mmCount} | 翻到: ${data.new_page_key || "?"}`
         );
       } else {
         const msg = data.detail || data.message || "填入失败";
@@ -394,9 +419,13 @@ fillAllButton.addEventListener("click", async () => {
       stopped = true;
       break;
     }
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    if (!state.cancelFillAll) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
   }
 
+  progressBarContainer.style.display = "none";
+  progressBar.style.width = "0%";
   if (!stopped) {
     pushLog("success", "全部完成", `${implementePages.length} 页已顺序填入`);
   }

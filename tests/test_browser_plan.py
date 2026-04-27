@@ -23,9 +23,11 @@ class BrowserPlanTests(unittest.TestCase):
 
     def test_browser_plan_batches_fields_by_expected_page(self) -> None:
         personal_fill_ids = {item.field_id for item in self.by_page["personal_page_1"].fill}
+        passport_fill_ids = {item.field_id for item in self.by_page["passport_page"].fill}
         travel_review_ids = {item.field_id for item in self.by_page["travel_page"].review}
         travel_block_ids = {item.field_id for item in self.by_page["travel_page"].blocked}
-        self.assertIn("passport.number", personal_fill_ids)
+        self.assertIn("identity.surname", personal_fill_ids)
+        self.assertIn("passport.number", passport_fill_ids)
         self.assertIn("travel.purpose_of_trip", travel_review_ids)
         self.assertIn("travel.us_contact_phone", travel_block_ids)
 
