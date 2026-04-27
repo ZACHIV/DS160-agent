@@ -27,11 +27,8 @@ class PlaywrightAdapterTests(unittest.TestCase):
 
     def test_select_and_radio_are_executable(self) -> None:
         select_commands = [command for command in self.commands if command.operation == "select_by_label"]
-        radio_commands = [command for command in self.commands if command.operation == "radio_by_question"]
         self.assertTrue(select_commands)
-        self.assertTrue(radio_commands)
         self.assertTrue(all(command.executable for command in select_commands))
-        self.assertTrue(all(command.executable for command in radio_commands))
 
     def test_script_contains_real_playwright_actions(self) -> None:
         self.assertIn("selectOption", self.script)

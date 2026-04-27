@@ -1,14 +1,5 @@
 const SERVER_BASE = "http://127.0.0.1:8765";
-const OFFLINE_MODE_MESSAGE = "已切换到离线模式：本地服务未连接。你仍然可以上传图片、复制提示词、粘贴模型结果和手动填写。";
-
-const FALLBACK_VISION_MANIFEST = [
-  { kind: "passport_bio", label: "护照资料页", description: "上传中国护照个人信息页清晰照片或扫描件。", required: true },
-  { kind: "trip_proof", label: "赴美行程或邀请材料", description: "上传行程单、邀请函或其他行程说明材料。", required: true },
-  { kind: "us_contact_proof", label: "美国联系人材料", description: "上传联系人信息、邀请函页或名片。", required: true },
-  { kind: "employment_proof", label: "工作或学校材料", description: "上传在职证明、学校证明或工作说明。", required: true },
-  { kind: "family_info_sheet", label: "家庭信息材料", description: "上传父母、配偶或美国亲属信息材料。", required: true },
-  { kind: "security_questionnaire", label: "安全背景问卷", description: "上传安全问题确认材料。", required: true },
-];
+const OFFLINE_MODE_MESSAGE = "已切换到离线模式：本地服务未连接。";
 
 const FALLBACK_SCHEMA_DOCUMENT = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -69,23 +60,15 @@ const BOOLEAN_PATHS = [
   "security_background.yes_no_answers.arrest_history",
 ];
 
-const manifestGrid = document.getElementById("manifest-grid");
 const manualForm = document.getElementById("manual-form");
 const submitStatus = document.getElementById("submit-status");
 const jsonPreview = document.getElementById("json-preview");
-const copyPromptButton = document.getElementById("copy-prompt");
-const pasteResultButton = document.getElementById("paste-result");
 const downloadButton = document.getElementById("download-json");
 const copyButton = document.getElementById("copy-json");
 const missingFields = document.getElementById("missing-fields");
-const visionWarnings = document.getElementById("vision-warnings");
-const documentReports = document.getElementById("document-reports");
-const resultDialog = document.getElementById("result-dialog");
-const resultInput = document.getElementById("result-input");
-const applyResultButton = document.getElementById("apply-result");
+const warnings = document.getElementById("warnings");
 
 const state = {
-  manifest: [],
   latestJsonText: "",
   schema: null,
   offlineMode: false,
@@ -95,11 +78,6 @@ const state = {
 function activateOfflineMode() {
   state.offlineMode = true;
   submitStatus.textContent = OFFLINE_MODE_MESSAGE;
-}
-
-
-function normalizeValue(value) {
-  return typeof value === "string" ? value.trim() : value;
 }
 
 
@@ -159,11 +137,6 @@ function manualFormFieldNames() {
 }
 
 
-function normalizeModelResult(result) {
-  return result && typeof result === "object" ? result : {};
-}
-
-
 function issueCard(value) {
   return `<article class="item-card"><strong>${value}</strong></article>`;
 }
@@ -171,17 +144,6 @@ function issueCard(value) {
 
 function warningCard(value) {
   return `<article class="item-card"><strong>${value}</strong></article>`;
-}
-
-
-function reportCard(doc) {
-  return `
-    <article class="item-card">
-      <strong>${doc.filename || "未上传文件"}</strong>
-      <span>${doc.status === "processed" ? "已处理" : doc.status === "missing" ? "未上传" : "处理失败"}</span>
-      <span>${(doc.warnings || []).join(" | ") || "已读取这份材料。"}</span>
-    </article>
-  `;
 }
 
 
@@ -265,46 +227,6 @@ function fieldHasValue(fieldName) {
 }
 
 
-function setFieldValue(name, value) {
-  const field = manualForm.elements.namedItem(name);
-  if (!field || value === undefined || field instanceof RadioNodeList) {
-    return;
-  }
-  if (field.type === "checkbox") {
-    field.checked = Boolean(value);
-    return;
-  }
-  if (JSON_TEXTAREA_PATHS.includes(name)) {
-    field.value = value && typeof value === "object" ? JSON.stringify(value, null, 2) : "";
-    return;
-  }
-  if (ARRAY_INPUT_PATHS.includes(name)) {
-    field.value = Array.isArray(value) ? value.join(", ") : "";
-    return;
-  }
-  field.value = value ?? "";
-}
-
-
-function applyPayloadToManualForm(payload) {
-  if (!payload) {
-    return;
-  }
-  manualFormFieldNames().forEach((fieldName) => {
-    setFieldValue(fieldName, getNestedValue(payload, fieldName));
-  });
-}
-
-
-function validateFormAgainstSchema() {
-  const formNames = manualFormFieldNames();
-  const missingFormFields = REQUIRED_PATHS.filter((fieldName) => !formNames.includes(fieldName));
-  if (missingFormFields.length) {
-    throw new Error("采集页字段与 dossier 定义不一致，请检查表单配置");
-  }
-}
-
-
 function validateDossierPayload(payload) {
   const missing = REQUIRED_PATHS.filter((path) => {
     const value = getNestedValue(payload, path);
@@ -360,7 +282,7 @@ function refreshManualValidation(scrollToFirst = false) {
     payload = manualPayload();
   } catch (error) {
     renderItems(missingFields, [], "没有缺失字段。", issueCard);
-    renderItems(visionWarnings, [error.message || "JSON 字段格式错误。"], "没有额外提醒。", warningCard);
+    renderItems(warnings, [error.message || "JSON 字段格式错误。"], "没有额外提醒。", warningCard);
     return { missing: [], invalids: { json: error.message || "JSON 字段格式错误。" } };
   }
   const { missing, invalids } = validateDossierPayload(payload);
@@ -372,7 +294,7 @@ function refreshManualValidation(scrollToFirst = false) {
     clearMissingHighlights();
   }
   renderItems(missingFields, problemFields, "没有缺失字段。", issueCard);
-  renderItems(visionWarnings, Object.values(invalids), "没有额外提醒。", warningCard);
+  renderItems(warnings, Object.values(invalids), "没有额外提醒。", warningCard);
   return { missing, invalids };
 }
 
@@ -464,91 +386,6 @@ async function buildExportDocument(payload) {
 }
 
 
-async function renderManualResult(payload) {
-  clearMissingHighlights();
-  const exportDocument = await buildExportDocument(payload);
-  state.latestJsonText = JSON.stringify(exportDocument, null, 2);
-  jsonPreview.textContent = state.latestJsonText;
-  renderItems(missingFields, [], "手填方式已补齐当前 dossier。", issueCard);
-  renderItems(visionWarnings, [], "没有额外提醒。", warningCard);
-  renderItems(documentReports, [], "这次使用的是手动填写。", reportCard);
-  downloadButton.disabled = false;
-  copyButton.disabled = false;
-  submitStatus.textContent = "手动整理完成，当前导出的是可直接导入执行页的 full dossier。";
-}
-
-
-function buildLocalPromptText(documents) {
-  const schemaDocument = state.schema || FALLBACK_SCHEMA_DOCUMENT;
-  const docLines = documents.map((document) => `- ${document.kind}: ${document.filename}`).join("\n") || "- 未选择文件";
-  return [
-    "你是美国签证资料整理助手。请根据我接下来上传的图片，直接返回一个完整 dossier JSON 对象。",
-    "要求：",
-    "1. 只允许返回 schema 中定义的字段",
-    "2. 不要输出 markdown",
-    "3. 不要输出解释文字",
-    "4. 缺失或无法确认的字段请填 null，source_ids 至少填能确认的来源 id",
-    "5. evidence_catalog 必须返回数组",
-    "",
-    `这次我会上传这些材料：\n${docLines}`,
-    "",
-    `目标 schema:\n${JSON.stringify(schemaDocument, null, 2)}`,
-  ].join("\n");
-}
-
-
-function manifestCard(doc) {
-  const inputId = `upload-${doc.kind}`;
-  return `
-    <article class="manifest-card" data-kind="${doc.kind}">
-      <header>
-        <div>
-          <p class="eyebrow">${doc.label}</p>
-          <h3>${doc.label}</h3>
-        </div>
-        <span class="token required">${doc.required ? "必传" : "选传"}</span>
-      </header>
-      <p>${doc.description}</p>
-      <div class="manifest-meta">
-        <span class="token neutral">图片上传</span>
-      </div>
-      <div class="upload-control">
-        <input id="${inputId}" class="manifest-file-input" type="file" accept="image/*" data-upload-kind="${doc.kind}" />
-        <label for="${inputId}" class="upload-trigger">选择图片</label>
-        <div class="manifest-note" data-note-kind="${doc.kind}">尚未选择文件。</div>
-      </div>
-    </article>
-  `;
-}
-
-
-function renderManifest() {
-  manifestGrid.innerHTML = state.manifest.map(manifestCard).join("");
-  manifestGrid.querySelectorAll("[data-upload-kind]").forEach((input) => {
-    input.addEventListener("change", () => {
-      const note = manifestGrid.querySelector(`[data-note-kind="${input.dataset.uploadKind}"]`);
-      note.textContent = input.files?.[0] ? `已选择：${input.files[0].name}` : "尚未选择文件。";
-    });
-  });
-}
-
-
-async function loadManifest() {
-  try {
-    const res = await fetch(`${SERVER_BASE}/vision-intake/manifest`);
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.detail || "无法读取图片整理清单");
-    }
-    state.manifest = data.documents || [];
-  } catch {
-    state.manifest = FALLBACK_VISION_MANIFEST;
-    activateOfflineMode();
-  }
-  renderManifest();
-}
-
-
 async function loadSchema() {
   try {
     const res = await fetch(`${SERVER_BASE}/dossier-schema`);
@@ -561,47 +398,16 @@ async function loadSchema() {
     state.schema = FALLBACK_SCHEMA_DOCUMENT;
     activateOfflineMode();
   }
-  validateFormAgainstSchema();
 }
 
 
-function toBase64DataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-
-async function collectUploads() {
-  const documents = [];
-  for (const spec of state.manifest) {
-    const input = manifestGrid.querySelector(`[data-upload-kind="${spec.kind}"]`);
-    const file = input?.files?.[0];
-    if (!file) {
-      continue;
-    }
-    documents.push({
-      kind: spec.kind,
-      filename: file.name,
-      media_type: file.type || "image/jpeg",
-      base64_data: await toBase64DataUrl(file),
-    });
-  }
-  return documents;
-}
-
-
-async function copyTextToClipboard(text) {
+function copyTextToClipboard(text) {
   if (!text) {
     throw new Error("没有可复制的内容");
   }
   if (navigator.clipboard?.writeText) {
     try {
-      await navigator.clipboard.writeText(text);
-      return;
+      return navigator.clipboard.writeText(text);
     } catch {
       // Fall back for file:// pages or browsers without clipboard permission.
     }
@@ -638,125 +444,6 @@ function flashButtonSuccess(button, successText, defaultText) {
 }
 
 
-async function copyPrompt() {
-  copyPromptButton.disabled = true;
-  copyPromptButton.textContent = "生成中…";
-  try {
-    const documents = await collectUploads();
-    if (!documents.length) {
-      throw new Error("至少需要上传一份图片材料");
-    }
-    let promptText = "";
-    let usedLocalPrompt = false;
-    try {
-      const res = await fetch(`${SERVER_BASE}/vision-intake/prompt`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documents }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || "提示词生成失败");
-      }
-      promptText = data.prompt_text;
-    } catch {
-      activateOfflineMode();
-      usedLocalPrompt = true;
-      promptText = buildLocalPromptText(documents);
-    }
-    await copyTextToClipboard(promptText);
-    flashButtonSuccess(copyPromptButton, "已复制", "一键复制提示词");
-    submitStatus.textContent = usedLocalPrompt
-      ? "提示词已复制。当前使用的是离线提示词，请把同样的图片上传到外部大模型。"
-      : "提示词已复制。下一步请去外部大模型上传同样的图片并运行。";
-  } catch (error) {
-    submitStatus.textContent = error.message || "提示词复制失败，请稍后再试。";
-  } finally {
-    copyPromptButton.disabled = false;
-    if (copyPromptButton.textContent === "生成中…") {
-      copyPromptButton.textContent = "一键复制提示词";
-    }
-  }
-}
-
-
-function openResultDialog() {
-  resultInput.value = "";
-  resultDialog.showModal();
-}
-
-
-function buildLocalValidationResult(result) {
-  const dossier = normalizeModelResult(result);
-  const { missing, invalids } = validateDossierPayload(dossier);
-  const warnings = Object.entries(invalids).map(([fieldName, message]) => `${fieldName}: ${message}`);
-  return {
-    ok: true,
-    dossier_document: missing.length || Object.keys(invalids).length ? null : dossier,
-    missing_fields: missing.length ? missing : Object.keys(invalids),
-    warnings,
-    documents: [],
-  };
-}
-
-
-async function renderExtractionResult(data) {
-  const partialPayload = data.dossier_document || {};
-  applyPayloadToManualForm(partialPayload);
-  if (data.missing_fields?.length) {
-    highlightMissingFields(data.missing_fields || []);
-  } else {
-    clearMissingHighlights();
-  }
-  renderItems(missingFields, data.missing_fields || [], "没有缺失字段。", issueCard);
-  renderItems(visionWarnings, data.warnings || [], "没有额外提醒。", warningCard);
-  renderItems(documentReports, data.documents || [], "没有文档处理结果。", reportCard);
-
-  if (data.dossier_document) {
-    state.latestJsonText = JSON.stringify(data.dossier_document, null, 2);
-    jsonPreview.textContent = state.latestJsonText;
-    downloadButton.disabled = false;
-    copyButton.disabled = false;
-    submitStatus.textContent = "资料整理完成，识别结果已经回填到表单，当前导出的是 full dossier。";
-  } else {
-    state.latestJsonText = "";
-    jsonPreview.textContent = "材料已经读取，但 dossier 还不完整。可以补传更清晰的图片，或者直接用下方手填内容补齐。";
-    downloadButton.disabled = true;
-    copyButton.disabled = true;
-    submitStatus.textContent = "已把识别到的内容回填到表单，请补齐剩余信息。";
-  }
-}
-
-
-async function applyModelResult() {
-  try {
-    const parsed = JSON.parse(resultInput.value);
-    let data;
-    try {
-      const res = await fetch(`${SERVER_BASE}/vision-intake/validate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ result: parsed }),
-      });
-      data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || "模型结果处理失败");
-      }
-    } catch {
-      activateOfflineMode();
-      data = buildLocalValidationResult(parsed);
-    }
-    await renderExtractionResult(data);
-    resultDialog.close();
-    submitStatus.textContent = data.dossier_document
-      ? "模型结果已应用，资料可以直接导出为 full dossier。"
-      : "模型结果已应用，但还有缺失或格式问题，请继续补齐。";
-  } catch (error) {
-    submitStatus.textContent = error.message || "无法应用模型结果。";
-  }
-}
-
-
 function downloadJson() {
   if (!state.latestJsonText) {
     return;
@@ -785,9 +472,6 @@ async function copyJson() {
 }
 
 
-copyPromptButton.addEventListener("click", copyPrompt);
-pasteResultButton.addEventListener("click", openResultDialog);
-applyResultButton.addEventListener("click", applyModelResult);
 manualForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   let payload;
@@ -804,8 +488,18 @@ manualForm.addEventListener("submit", async (event) => {
     submitStatus.textContent = "还有未填写或格式不对的信息，请先补齐高亮位置。";
     return;
   }
-  await renderManualResult(payload);
+
+  clearMissingHighlights();
+  const exportDocument = await buildExportDocument(payload);
+  state.latestJsonText = JSON.stringify(exportDocument, null, 2);
+  jsonPreview.textContent = state.latestJsonText;
+  renderItems(missingFields, [], "当前表单已补齐。", issueCard);
+  renderItems(warnings, [], "没有额外提醒。", warningCard);
+  downloadButton.disabled = false;
+  copyButton.disabled = false;
+  submitStatus.textContent = "整理完成，当前导出的是可直接导入执行页的完整 dossier JSON 对象。";
 });
+
 Array.from(manualForm.elements).forEach((field) => {
   if (!field.name) {
     return;
@@ -818,10 +512,12 @@ Array.from(manualForm.elements).forEach((field) => {
     refreshManualValidation(false);
   });
 });
+
 downloadButton.addEventListener("click", downloadJson);
 copyButton.addEventListener("click", copyJson);
 downloadButton.disabled = true;
 copyButton.disabled = true;
-Promise.all([loadSchema(), loadManifest()]).catch((error) => {
+
+loadSchema().catch((error) => {
   submitStatus.textContent = error.message || "页面初始化失败，请确认服务已启动。";
 });

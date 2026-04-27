@@ -530,6 +530,7 @@ def export_draft_bundle_file(
     dossier = load_dossier(dossier_path)
     bundle = build_draft_bundle(dossier)
     output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
         "window.DS160_DRAFT_BUNDLE = " + json.dumps(bundle, indent=2, ensure_ascii=False) + ";\n",
         encoding="utf-8",

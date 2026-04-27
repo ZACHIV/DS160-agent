@@ -32,7 +32,7 @@ class DriverAdapterTests(unittest.TestCase):
         self.assertIn("agent-browser snapshot -i", commands)
 
     def test_driver_script_contains_fill_and_pause_lines(self) -> None:
-        self.assertIn("agent-browser find label 'Surname' fill 'ZHANG'", self.script)
+        self.assertIn("agent-browser find label '#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_SURNAME' fill 'ZHANG'", self.script)
         self.assertIn("# REVIEW REQUIRED travel.purpose_of_trip", self.script)
         self.assertIn("# BLOCKED travel.us_contact_phone", self.script)
 

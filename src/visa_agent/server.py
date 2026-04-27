@@ -21,15 +21,12 @@ from visa_agent.browser.live_form_fill import (
     save_current_page,
 )
 from visa_agent.dossier_contract import (
-    dossier_field_errors,
     dossier_to_dict,
     load_dossier_schema,
-    missing_required_dossier_fields,
     validate_dossier_payload,
 )
 from visa_agent.draft_bundle import build_draft_bundle
 from visa_agent.mapping import map_dossier_to_ds160
-from visa_agent.vision_intake import VisionUploadedDocument, build_prompt_text, extract_dossier_from_documents, vision_document_specs
 from visa_agent.page_ids import PAGE_ID_NORMALIZE
 from visa_agent.planner import build_execution_plan
 from visa_agent.schema import load_dossier, load_dossier_payload
@@ -116,40 +113,15 @@ class DossierSchemaResponse(BaseModel):
     schema_document: dict[str, Any]
 
 
-class VisionUploadedDocumentRequest(BaseModel):
+class DossierPreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    kind: str
-    filename: str
-    media_type: str
-    base64_data: str
-
-
-class VisionIntakeExtractRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    documents: list[VisionUploadedDocumentRequest]
-
-
-class VisionManifestResponse(BaseModel):
-    ok: bool
-    documents: list[dict[str, Any]]
-
-
-class VisionPromptResponse(BaseModel):
-    ok: bool
-    prompt_text: str
-
-
-class VisionIntakeExtractResponse(BaseModel):
-    ok: bool
-    dossier_document: dict[str, Any] | None
-    missing_fields: list[str]
-    warnings: list[str]
-    documents: list[dict[str, Any]]
-
-
-class VisionModelResultRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    result: dict[str, Any]
+    case_id: str
+    identity: dict[str, Any]
+    travel_plan: dict[str, Any]
+    employment_education: dict[str, Any]
+    family_contacts: dict[str, Any]
+    security_background: dict[str, Any]
+    evidence_catalog: list[dict[str, Any]] = []
 
 
 # ---------------------------------------------------------------------------
@@ -256,10 +228,10 @@ def get_detect_page():
 
 
 @app.post("/dossier/preview", response_model=DossierPreviewResponse)
-def post_dossier_preview(req: dict[str, Any]):
+def post_dossier_preview(req: DossierPreviewRequest):
     """Validate a full dossier payload and return preview status."""
     try:
-        payload = validate_dossier_payload(dict(req))
+        payload = validate_dossier_payload(dict(req.model_dump()))
         dossier = load_dossier_payload(payload)
         return _build_preview_payload(dossier)
     except Exception as exc:
@@ -273,10 +245,10 @@ def get_dossier_schema():
 
 
 @app.post("/dossier-document", response_model=DossierDocumentResponse)
-def post_dossier_document(req: dict[str, Any]):
+def post_dossier_document(req: DossierPreviewRequest):
     """Set the active dossier document used by the fill assistant."""
     global ACTIVE_DOSSIER_DOCUMENT
-    payload = dict(req)
+    payload = dict(req.model_dump())
     ACTIVE_DOSSIER_DOCUMENT, case_id = _coerce_active_document(payload)
     return DossierDocumentResponse(
         ok=True,
@@ -303,74 +275,6 @@ def get_draft_bundle():
     """Build the assistant bundle from the active dossier document or legacy dossier."""
     dossier = _load_dossier()
     return DraftBundleResponse(ok=True, bundle=build_draft_bundle(dossier))
-
-
-@app.get("/vision-intake/manifest", response_model=VisionManifestResponse)
-def get_vision_manifest():
-    """Describe which images the vision intake page expects from the user."""
-    return VisionManifestResponse(ok=True, documents=vision_document_specs())
-
-
-@app.post("/vision-intake/prompt", response_model=VisionPromptResponse)
-def post_vision_prompt(req: VisionIntakeExtractRequest):
-    """Build the prompt text that the user can paste into an external vision model."""
-    documents = [
-        VisionUploadedDocument(
-            kind=item.kind,
-            filename=item.filename,
-            media_type=item.media_type,
-            base64_data=item.base64_data,
-        )
-        for item in req.documents
-    ]
-    return VisionPromptResponse(ok=True, prompt_text=build_prompt_text(documents, load_dossier_schema()))
-
-
-@app.post("/vision-intake/extract", response_model=VisionIntakeExtractResponse)
-def post_vision_extract(req: VisionIntakeExtractRequest):
-    """Run vision-model extraction over uploaded images and attempt to build the full dossier JSON document."""
-    try:
-        result = extract_dossier_from_documents(
-            [
-                VisionUploadedDocument(
-                    kind=item.kind,
-                    filename=item.filename,
-                    media_type=item.media_type,
-                    base64_data=item.base64_data,
-                )
-                for item in req.documents
-            ],
-            schema=load_dossier_schema(),
-        )
-        return VisionIntakeExtractResponse(ok=True, **result.to_dict())
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@app.post("/vision-intake/validate", response_model=VisionIntakeExtractResponse)
-def post_vision_validate(req: VisionModelResultRequest):
-    """Validate a manually obtained vision-model result and convert it into the dossier result shape."""
-    try:
-        payload = dict(req.result)
-        missing_fields = missing_required_dossier_fields(payload)
-        warnings: list[str] = []
-        dossier_document = None
-        if not missing_fields:
-            try:
-                dossier_document = validate_dossier_payload(payload)
-            except Exception as exc:
-                missing_fields = list(dossier_field_errors(payload).keys())
-                warnings.append(str(exc))
-                dossier_document = None
-        return VisionIntakeExtractResponse(
-            ok=True,
-            dossier_document=dossier_document,
-            missing_fields=missing_fields,
-            warnings=warnings,
-            documents=[],
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.post("/fill-page", response_model=FillPageResponse)

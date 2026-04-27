@@ -25,10 +25,10 @@ class RuntimePlanTests(unittest.TestCase):
 
     def test_runtime_plan_resolves_fill_locators(self) -> None:
         personal_page = self.by_page["personal_page_1"]
-        passport_number = next(item for item in personal_page.fill_instructions if item.field_id == "passport.number")
-        self.assertIsNotNone(passport_number.locator)
-        self.assertEqual(passport_number.locator["strategy"], "label")
-        self.assertEqual(passport_number.locator["input_kind"], "text")
+        surname = next(item for item in personal_page.fill_instructions if item.field_id == "identity.surname")
+        self.assertIsNotNone(surname.locator)
+        self.assertEqual(surname.locator["strategy"], "css")
+        self.assertEqual(surname.locator["input_kind"], "text")
 
     def test_runtime_plan_marks_review_and_block_page_pauses(self) -> None:
         travel_page = self.by_page["travel_page"]

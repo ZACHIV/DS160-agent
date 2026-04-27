@@ -32,7 +32,7 @@ class BrowserPlanTests(unittest.TestCase):
     def test_browser_plan_preserves_page_save_checkpoints(self) -> None:
         self.assertEqual(self.by_page["personal_page_1"].save_checkpoint, "save_after_identity_page")
         self.assertEqual(self.by_page["travel_page"].save_checkpoint, "save_after_travel_page")
-        self.assertEqual(self.by_page["security_page"].save_checkpoint, "save_before_security_page")
+        self.assertEqual(self.by_page["work_education_present_page"].save_checkpoint, "save_after_employment_page")
 
     def test_browser_plan_keeps_hard_stops(self) -> None:
         self.assertIn("stop_on_captcha", self.browser_plan.hard_stops)

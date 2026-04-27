@@ -2,7 +2,7 @@
 
 ## Purpose
 
-- `app/intake.html`: collect full dossier data from images/manual input; export final JSON for execution.
+- `app/intake.html`: collect full dossier data via manual input; export final JSON for execution.
 - `app/ds160-assistant.html`: import JSON and autofill DS-160 via local FastAPI + Chrome CDP.
 
 ## Runtime Contract
@@ -34,14 +34,6 @@ cd \path\to\amercican_visa
 - If `uv` is installed, the script uses it.
 - If `uv` is not installed, the script falls back to `python -m venv` + `pip`.
 - Runtime server dependencies are defined in `requirements.txt`.
-
-Optional for vision intake:
-
-```bash
-export VISION_MODEL_API_KEY=...
-export VISION_MODEL_NAME=...
-export VISION_MODEL_BASE_URL=...
-```
 
 ## Start
 
@@ -82,7 +74,7 @@ Windows PowerShell:
 
 1. Run start script.
 2. Use `app/intake.html`.
-3. Upload docs or fill manually.
+3. Fill manually.
 4. Export JSON.
 5. Open `app/ds160-assistant.html`.
 6. Import same JSON.

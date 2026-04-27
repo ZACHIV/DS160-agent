@@ -170,9 +170,10 @@ def main() -> int:
     if args.mode == "playwright-script":
         print(render_playwright_script(playwright_commands))
         return 0
+    profile_dir = str(Path(args.visible_browser_profile).resolve())
     visible_commands = build_visible_ceac_commands(
         url=args.start_url,
-        profile_dir=args.visible_browser_profile,
+        profile_dir=profile_dir,
         remote_debugging_port=args.remote_debugging_port,
     )
     if args.mode == "visible-browser-manifest":
