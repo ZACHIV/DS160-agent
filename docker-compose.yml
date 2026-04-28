@@ -1,0 +1,19 @@
+services:
+  ds160:
+    build: .
+    image: ds160-visa-assistant:latest
+    container_name: ds160-visa
+    ports:
+      - "8765:8765"   # API server + web UI
+      - "9222:9222"   # Chrome DevTools Protocol
+    environment:
+      - CDP_PORT=9222
+      - DOSSIER_PATH=/app/sample_data/china_b1b2_sample.json
+    volumes:
+      - chrome_data:/home/ds160/chrome-profile
+      - ./sample_data:/app/sample_data:ro
+    restart: unless-stopped
+    shm_size: "256m"
+
+volumes:
+  chrome_data:

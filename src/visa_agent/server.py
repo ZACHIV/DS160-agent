@@ -9,10 +9,15 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
 # Allow running directly: python -m visa_agent.server
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+APP_DIR = PROJECT_ROOT / "app"
 
 from visa_agent.browser.cdp_client import find_target_websocket_url, list_debug_targets
 from visa_agent.browser.live_form_fill import (
@@ -53,6 +58,59 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve static assets (CSS, JS) from the app directory
+if APP_DIR.is_dir():
+    app.mount("/app", StaticFiles(directory=str(APP_DIR)), name="app_static")
+
+
+@app.get("/", response_class=HTMLResponse)
+def get_landing():
+    """Unified landing page linking intake and assistant."""
+    if (APP_DIR / "index.html").is_file():
+        return HTMLResponse((APP_DIR / "index.html").read_text(encoding="utf-8"))
+    # Fallback inline landing page
+    return HTMLResponse("""<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>DS-160 Visa Assistant</title>
+<style>
+:root{--bg:#0a0a0f;--surface:#141420;--text:#e0e0e0;--accent:#6fcf97;--accent2:#5b9bd5}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;align-items:center;justify-content:center;min-height:100vh}
+main{display:flex;gap:2rem;max-width:720px;padding:2rem}
+.card{background:var(--surface);border-radius:12px;padding:2rem;text-align:center;flex:1;border:1px solid #222;transition:border-color .2s}
+.card:hover{border-color:var(--accent)}
+.card h2{font-size:1.25rem;margin-bottom:.5rem}
+.card p{color:#888;margin-bottom:1.5rem;font-size:.9rem;line-height:1.5}
+.card a{display:inline-block;padding:.6rem 1.5rem;border-radius:6px;text-decoration:none;font-weight:600;font-size:.9rem}
+.card a.primary{background:var(--accent);color:#000}
+.card a.secondary{background:var(--accent2);color:#fff}
+</style>
+</head>
+<body>
+<main>
+<div class="card"><h2>资料采集</h2><p>填写申请人全部信息，生成统一 dossier 文件。</p><a class="secondary" href="/intake">打开 Intake</a></div>
+<div class="card"><h2>表单填写</h2><p>导入 dossier 文件，在 DS-160 页面上自动填入。</p><a class="primary" href="/assistant">打开 Assistant</a></div>
+</main>
+</body>
+</html>""")
+
+
+@app.get("/intake", response_class=HTMLResponse)
+def get_intake():
+    """Serve the DS-160 intake page."""
+    html = (APP_DIR / "intake.html").read_text(encoding="utf-8")
+    return HTMLResponse(html)
+
+
+@app.get("/assistant", response_class=HTMLResponse)
+def get_assistant():
+    """Serve the DS-160 fill assistant page."""
+    html = (APP_DIR / "ds160-assistant.html").read_text(encoding="utf-8")
+    return HTMLResponse(html)
 
 
 # ---------------------------------------------------------------------------
@@ -452,8 +510,8 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "visa_agent.server:app",
-        host="127.0.0.1",
-        port=8765,
+        host=os.environ.get("API_HOST", "127.0.0.1"),
+        port=int(os.environ.get("API_PORT", "8765")),
         reload=False,
         log_level="info",
     )
