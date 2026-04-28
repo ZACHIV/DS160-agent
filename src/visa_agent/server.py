@@ -33,6 +33,11 @@ from visa_agent.dossier_contract import (
     load_dossier_schema,
     validate_dossier_payload,
 )
+from visa_agent.audit_log import (
+    log_dossier_import,
+    log_page_fill,
+    read_recent_logs,
+)
 from visa_agent.checkpoint import (
     FillCheckpoint,
     checkpoint_workspace,
@@ -40,6 +45,7 @@ from visa_agent.checkpoint import (
     save_checkpoint,
     clear_checkpoint,
 )
+from visa_agent.dom_drift import check_page_selectors
 from visa_agent.draft_bundle import build_draft_bundle
 from visa_agent.encryption import encrypt_dossier_json, is_encrypted_dossier
 from visa_agent.mapping import map_dossier_to_ds160
@@ -83,26 +89,34 @@ def get_landing():
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>DS-160 Visa Assistant</title>
+<title>DS-160 签证助手</title>
 <style>
 :root{--bg:#0a0a0f;--surface:#141420;--text:#e0e0e0;--accent:#6fcf97;--accent2:#5b9bd5}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;align-items:center;justify-content:center;min-height:100vh}
-main{display:flex;gap:2rem;max-width:720px;padding:2rem}
-.card{background:var(--surface);border-radius:12px;padding:2rem;text-align:center;flex:1;border:1px solid #222;transition:border-color .2s}
+header{position:fixed;top:0;left:0;right:0;padding:1.5rem 2rem;border-bottom:1px solid #222;display:flex;align-items:center;gap:1rem}
+header h1{font-size:1.1rem;font-weight:600}
+header span.ver{color:#555;font-size:.8rem}
+main{display:flex;gap:2rem;max-width:800px;padding:2rem;margin-top:2rem}
+.card{background:var(--surface);border-radius:12px;padding:2.5rem 2rem;text-align:center;flex:1;border:1px solid #222;transition:border-color .2s}
 .card:hover{border-color:var(--accent)}
-.card h2{font-size:1.25rem;margin-bottom:.5rem}
-.card p{color:#888;margin-bottom:1.5rem;font-size:.9rem;line-height:1.5}
-.card a{display:inline-block;padding:.6rem 1.5rem;border-radius:6px;text-decoration:none;font-weight:600;font-size:.9rem}
+.card .step{display:inline-block;background:#1a1a2e;color:var(--accent2);font-size:.75rem;padding:.25rem .75rem;border-radius:99px;margin-bottom:1rem;font-weight:600}
+.card h2{font-size:1.25rem;margin-bottom:.75rem}
+.card p{color:#888;margin-bottom:2rem;font-size:.9rem;line-height:1.6}
+.card a{display:inline-block;padding:.7rem 2rem;border-radius:6px;text-decoration:none;font-weight:600;font-size:.9rem}
 .card a.primary{background:var(--accent);color:#000}
 .card a.secondary{background:var(--accent2);color:#fff}
+.features{position:fixed;bottom:1.5rem;left:0;right:0;text-align:center;color:#444;font-size:.75rem}
+.features span{margin:0 .75rem}
 </style>
 </head>
 <body>
+<header><h1>DS-160 签证助手</h1><span class="ver">China B1/B2</span></header>
 <main>
-<div class="card"><h2>资料采集</h2><p>填写申请人全部信息，生成统一 dossier 文件。</p><a class="secondary" href="/intake">打开 Intake</a></div>
-<div class="card"><h2>表单填写</h2><p>导入 dossier 文件，在 DS-160 页面上自动填入。</p><a class="primary" href="/assistant">打开 Assistant</a></div>
+<div class="card"><span class="step">第 1 步</span><h2>采集申请资料</h2><p>手动填写申请人护照信息、旅行计划、工作教育、家庭背景，生成统一申请资料文件。</p><a class="secondary" href="/intake">填写资料</a></div>
+<div class="card"><span class="step">第 2 步</span><h2>自动填入表单</h2><p>导入资料文件，通过浏览器自动填写 DS-160 表格。支持逐页填写、一键翻页、全部自动执行。</p><a class="primary" href="/assistant">开始填写</a></div>
 </main>
+<footer class="features"><span>加密存储</span><span>断点续填</span><span>18 页支持</span><span>DOM 检测</span></footer>
 </body>
 </html>""")
 
@@ -253,6 +267,20 @@ class DossierValidateResponse(BaseModel):
     warnings: list[dict[str, str]]
 
 
+class AuditLogResponse(BaseModel):
+    ok: bool
+    entries: list[dict[str, Any]]
+
+
+class DriftCheckResponse(BaseModel):
+    ok: bool
+    page_key: str
+    total_expected: int
+    found: int
+    missing: list[str]
+    healthy: bool
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -379,6 +407,7 @@ def post_dossier_document(req: DossierPreviewRequest):
     global ACTIVE_DOSSIER_DOCUMENT
     payload = dict(req.model_dump())
     ACTIVE_DOSSIER_DOCUMENT, case_id = _coerce_active_document(payload)
+    log_dossier_import(case_id)
     return DossierDocumentResponse(
         ok=True,
         dossier_document=ACTIVE_DOSSIER_DOCUMENT,
@@ -429,6 +458,7 @@ def post_dossier_decrypt(req: DossierDecryptRequest):
         raise HTTPException(status_code=400, detail="Decryption failed. Wrong passphrase or corrupted data.")
     dossier_payload = json.loads(plaintext)
     ACTIVE_DOSSIER_DOCUMENT, case_id = _coerce_active_document(dossier_payload)
+    log_dossier_import(case_id, encrypted=True)
     return DossierDecryptResponse(
         ok=True,
         dossier_document=ACTIVE_DOSSIER_DOCUMENT,
@@ -538,6 +568,43 @@ def post_dossier_validate(req: DossierValidateRequest):
     return DossierValidateResponse(ok=len(errors) == 0, errors=errors, warnings=warnings)
 
 
+@app.get("/audit-log", response_model=AuditLogResponse)
+def get_audit_log(limit: int = 50):
+    """Return recent audit log entries."""
+    return AuditLogResponse(ok=True, entries=read_recent_logs(limit=limit))
+
+
+@app.get("/dom-drift", response_model=DriftCheckResponse)
+def get_dom_drift(page_key: str | None = None):
+    """Check whether expected DS-160 selectors are present in the current DOM."""
+    if not page_key:
+        try:
+            detected = detect_current_page()
+            page_key = detected.payload.get("page_key", "")
+        except Exception:
+            raise HTTPException(status_code=503, detail="Cannot detect current page. Specify page_key parameter.")
+    try:
+        report = check_page_selectors(page_key, CDP_PORT)
+        if report.total_expected == 0:
+            return DriftCheckResponse(
+                ok=True, page_key=page_key,
+                total_expected=0, found=0, missing=[], healthy=True,
+            )
+        from visa_agent.audit_log import log_drift_warning
+        if not report.healthy:
+            log_drift_warning(page_key, report.total_expected, report.found, report.missing)
+        return DriftCheckResponse(
+            ok=report.healthy,
+            page_key=page_key,
+            total_expected=report.total_expected,
+            found=report.found,
+            missing=report.missing,
+            healthy=report.healthy,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Drift check failed: {exc}")
+
+
 @app.get("/draft-bundle", response_model=DraftBundleResponse)
 def get_draft_bundle():
     """Build the assistant bundle from the active dossier document or legacy dossier."""
@@ -577,6 +644,7 @@ def post_fill_page(req: FillPageRequest):
 
         filled = result.payload.get("filled") or []
         missing = result.payload.get("missing") or []
+        log_page_fill(dossier.case_id, canonical or result.payload.get("page_key", "unknown"), len(filled), len(missing), ok=result.ok)
         return FillPageResponse(
             ok=result.ok,
             page_key=canonical or result.payload.get("page_key", "unsupported"),
@@ -632,6 +700,10 @@ def post_fill_and_continue(req: FillPageRequest):
                 save_checkpoint(cp, checkpoint_workspace())
             except Exception:
                 pass  # checkpoint save is best-effort, don't fail the fill
+
+        log_page_fill(dossier.case_id, canonical, len(filled), len(missing),
+                      application_id=result.get("application_id"),
+                      ok=bool(result.get("fill_ok")))
 
         return FillContinueResponse(
             ok=bool(result.get("fill_ok") and result.get("next_ok")),
