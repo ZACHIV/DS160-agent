@@ -55,7 +55,7 @@ class StartScriptsTests(unittest.TestCase):
         )
         self.assertIn("visa_agent.server", result.stdout)
         self.assertIn("--remote-debugging-port=9222", result.stdout)
-        self.assertIn("open intake page", result.stdout)
+        self.assertIn("open landing page", result.stdout)
 
     def test_stop_sh_supports_dry_run(self) -> None:
         result = subprocess.run(
@@ -85,7 +85,7 @@ class StartScriptsTests(unittest.TestCase):
         )
         self.assertIn("visa_agent.server", start_result.stdout)
         self.assertIn("--remote-debugging-port=9222", start_result.stdout)
-        self.assertIn("open intake page", start_result.stdout)
+        self.assertIn("open landing page", start_result.stdout)
 
         stop_result = subprocess.run(
             ["pwsh", "-NoProfile", "-File", str(STOP_PS1), "--dry-run"],

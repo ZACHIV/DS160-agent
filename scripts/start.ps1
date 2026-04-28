@@ -146,27 +146,24 @@ function Start-Server {
     Write-Error "FastAPI server did not become ready. Recent log output:`n$((Get-Content -Path $ServerLog -Tail 20 -ErrorAction SilentlyContinue) -join [Environment]::NewLine)"
 }
 
-$IntakeUrl = Get-FileUrl (Join-Path $RootDir "app\intake.html")
-$AssistantUrl = Get-FileUrl (Join-Path $RootDir "app\ds160-assistant.html")
+$LandingUrl = "http://127.0.0.1:${ServerPort}"
 
 if ($DryRun) {
     Start-ChromeDebug
     Start-Server
-    Write-Output "DRY RUN: open intake page $IntakeUrl"
-    Write-Output "DRY RUN: open assistant page $AssistantUrl"
+    Write-Output "DRY RUN: open landing page $LandingUrl"
     exit 0
 }
 
 Start-ChromeDebug
 Start-Server
-Start-Process $IntakeUrl | Out-Null
-Start-Process $AssistantUrl | Out-Null
+Start-Sleep -Seconds 2
+Start-Process $LandingUrl | Out-Null
 
 @"
 Windows startup complete.
 
-- Intake page: $IntakeUrl
-- Assistant page: $AssistantUrl
-- FastAPI service: http://127.0.0.1:$ServerPort
-- Chrome remote debugging: http://127.0.0.1:$RemoteDebuggingPort/json/version
+  DS-160 visa helper: $LandingUrl
+  FastAPI service:     http://127.0.0.1:$ServerPort
+  Chrome CDP:          http://127.0.0.1:$RemoteDebuggingPort/json/version
 "@ | Write-Output

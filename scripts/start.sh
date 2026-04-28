@@ -166,29 +166,35 @@ start_server() {
   exit 1
 }
 
-INTAKE_URL="$(file_url "$ROOT_DIR/app/intake.html")"
-ASSISTANT_URL="$(file_url "$ROOT_DIR/app/ds160-assistant.html")"
+LANDING_URL="http://127.0.0.1:${SERVER_PORT}"
 OPEN_CMD="$(resolve_open_cmd)"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   start_chrome_debug
   start_server
-  echo "DRY RUN: open intake page $INTAKE_URL"
-  echo "DRY RUN: open assistant page $ASSISTANT_URL"
+  echo "DRY RUN: open landing page $LANDING_URL"
   exit 0
 fi
 
 mkdir -p "$PROFILE_DIR"
 start_chrome_debug
 start_server
-open_url "$OPEN_CMD" "$INTAKE_URL"
-open_url "$OPEN_CMD" "$ASSISTANT_URL"
+
+# Wait for server to be fully up before opening browser
+sleep 2
+open_url "$OPEN_CMD" "$LANDING_URL"
 
 cat <<EOF
 Startup complete.
 
-- Intake page: $INTAKE_URL
-- Assistant page: $ASSISTANT_URL
-- FastAPI service: http://127.0.0.1:${SERVER_PORT}
-- Chrome remote debugging: http://127.0.0.1:${REMOTE_DEBUGGING_PORT}/json/version
+  DS-160 签证助手:  $LANDING_URL
+  FastAPI service:   http://127.0.0.1:${SERVER_PORT}
+  Chrome CDP:        http://127.0.0.1:${REMOTE_DEBUGGING_PORT}/json/version
+
+下一步：
+  1. 在打开的页面中选择"填写资料"，录入申请信息
+  2. 导出 dossier JSON 文件
+  3. 在助手页面导入 JSON
+  4. 在 Chrome 中打开 ceac.state.gov 开始填表
+  5. 回到助手页面，点击填入按钮
 EOF
