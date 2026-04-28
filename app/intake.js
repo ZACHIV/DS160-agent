@@ -64,6 +64,8 @@ const manualForm = document.getElementById("manual-form");
 const submitStatus = document.getElementById("submit-status");
 const jsonPreview = document.getElementById("json-preview");
 const downloadButton = document.getElementById("download-json");
+const downloadEncryptedButton = document.getElementById("download-encrypted");
+const encryptPassphraseInput = document.getElementById("encrypt-passphrase");
 const copyButton = document.getElementById("copy-json");
 const missingFields = document.getElementById("missing-fields");
 const warnings = document.getElementById("warnings");
@@ -458,6 +460,78 @@ function downloadJson() {
 }
 
 
+async function downloadEncryptedJson() {
+  if (!state.latestJsonText) {
+    submitStatus.textContent = "请先生成资料。";
+    return;
+  }
+  const passphrase = (encryptPassphraseInput.value || "").trim();
+  if (passphrase.length < 8) {
+    submitStatus.textContent = "加密密码至少需要8位字符。";
+    return;
+  }
+  downloadEncryptedButton.disabled = true;
+  downloadEncryptedButton.textContent = "加密中…";
+  try {
+    if (!state.offlineMode) {
+      const res = await fetch(`${SERVER_BASE}/dossier-document/encrypt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passphrase }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        const encryptedJson = JSON.stringify(data.encrypted_payload, null, 2);
+        const blob = new Blob([encryptedJson], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "china-b1b2-dossier.enc.json";
+        link.click();
+        URL.revokeObjectURL(url);
+        submitStatus.textContent = "已下载加密文件。请妥善保管密码。";
+        return;
+      }
+      throw new Error(data.detail || "服务端加密失败");
+    }
+    // Offline: encrypt client-side via Web Crypto
+    const enc = new TextEncoder();
+    const plaintext = enc.encode(state.latestJsonText);
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(passphrase), "PBKDF2", false, ["deriveKey"]);
+    const key = await crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt"]
+    );
+    const nonce = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, key, plaintext);
+    const payload = {
+      format: "ds160-encrypted-v1",
+      salt_b64: btoa(String.fromCharCode(...salt)),
+      nonce_b64: btoa(String.fromCharCode(...nonce)),
+      ciphertext_b64: btoa(String.fromCharCode(...new Uint8Array(ciphertext))),
+    };
+    const encryptedJson = JSON.stringify(payload, null, 2);
+    const blob = new Blob([encryptedJson], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "china-b1b2-dossier.enc.json";
+    link.click();
+    URL.revokeObjectURL(url);
+    submitStatus.textContent = "已下载加密文件（离线模式）。请妥善保管密码。";
+  } catch (error) {
+    submitStatus.textContent = (error && error.message) ? error.message : "加密导出失败";
+  } finally {
+    downloadEncryptedButton.disabled = false;
+    downloadEncryptedButton.textContent = "下载加密文件";
+  }
+}
+
+
 async function copyJson() {
   if (!state.latestJsonText) {
     return;
@@ -496,6 +570,7 @@ manualForm.addEventListener("submit", async (event) => {
   renderItems(missingFields, [], "当前表单已补齐。", issueCard);
   renderItems(warnings, [], "没有额外提醒。", warningCard);
   downloadButton.disabled = false;
+  downloadEncryptedButton.disabled = false;
   copyButton.disabled = false;
   submitStatus.textContent = "整理完成，当前导出的是可直接导入执行页的完整 dossier JSON 对象。";
 });
@@ -514,8 +589,10 @@ Array.from(manualForm.elements).forEach((field) => {
 });
 
 downloadButton.addEventListener("click", downloadJson);
+downloadEncryptedButton.addEventListener("click", downloadEncryptedJson);
 copyButton.addEventListener("click", copyJson);
 downloadButton.disabled = true;
+downloadEncryptedButton.disabled = true;
 copyButton.disabled = true;
 
 loadSchema().catch((error) => {

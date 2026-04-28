@@ -1,6 +1,7 @@
 """Local FastAPI server bridging the DS-160 assistant frontend to Chrome via CDP."""
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -27,6 +28,7 @@ from visa_agent.dossier_contract import (
     validate_dossier_payload,
 )
 from visa_agent.draft_bundle import build_draft_bundle
+from visa_agent.encryption import encrypt_dossier_json, is_encrypted_dossier
 from visa_agent.mapping import map_dossier_to_ds160
 from visa_agent.page_ids import PAGE_ID_NORMALIZE, bundle_page_id
 from visa_agent.planner import build_execution_plan
@@ -132,6 +134,28 @@ class DossierPreviewRequest(BaseModel):
     family_contacts: dict[str, Any]
     security_background: dict[str, Any]
     evidence_catalog: list[dict[str, Any]] = []
+
+
+class DossierEncryptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    passphrase: str
+
+
+class DossierEncryptResponse(BaseModel):
+    ok: bool
+    encrypted_payload: dict[str, Any]
+
+
+class DossierDecryptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    encrypted_payload: dict[str, Any]
+    passphrase: str
+
+
+class DossierDecryptResponse(BaseModel):
+    ok: bool
+    dossier_document: dict[str, Any]
+    case_id: str
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +301,43 @@ def get_dossier_document():
         ok=True,
         dossier_document=ACTIVE_DOSSIER_DOCUMENT,
         case_id=dossier.case_id,
+    )
+
+
+@app.post("/dossier-document/encrypt", response_model=DossierEncryptResponse)
+def post_dossier_encrypt(req: DossierEncryptRequest):
+    """Encrypt the active dossier document with a passphrase."""
+    if ACTIVE_DOSSIER_DOCUMENT is None:
+        raise HTTPException(status_code=404, detail="No dossier document loaded")
+    if len(req.passphrase) < 8:
+        raise HTTPException(status_code=400, detail="Passphrase must be at least 8 characters")
+    plaintext = json.dumps(ACTIVE_DOSSIER_DOCUMENT, ensure_ascii=False)
+    encrypted = encrypt_dossier_json(plaintext, req.passphrase)
+    return DossierEncryptResponse(
+        ok=True,
+        encrypted_payload=json.loads(encrypted),
+    )
+
+
+@app.post("/dossier-document/decrypt", response_model=DossierDecryptResponse)
+def post_dossier_decrypt(req: DossierDecryptRequest):
+    """Decrypt an encrypted dossier and set it as the active document."""
+    global ACTIVE_DOSSIER_DOCUMENT
+    from visa_agent.encryption import decrypt_dossier_json
+
+    if not is_encrypted_dossier(req.encrypted_payload):
+        raise HTTPException(status_code=400, detail="Payload is not an encrypted dossier")
+    try:
+        encrypted_json = json.dumps(req.encrypted_payload, ensure_ascii=False)
+        plaintext = decrypt_dossier_json(encrypted_json, req.passphrase)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Decryption failed. Wrong passphrase or corrupted data.")
+    dossier_payload = json.loads(plaintext)
+    ACTIVE_DOSSIER_DOCUMENT, case_id = _coerce_active_document(dossier_payload)
+    return DossierDecryptResponse(
+        ok=True,
+        dossier_document=ACTIVE_DOSSIER_DOCUMENT,
+        case_id=case_id,
     )
 
 

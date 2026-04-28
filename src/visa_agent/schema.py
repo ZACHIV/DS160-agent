@@ -363,8 +363,15 @@ def _load_security(payload: dict[str, Any]) -> SecurityBackground:
     )
 
 
-def load_dossier(path: str | Path) -> ApplicantDossier:
-    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+def load_dossier(path: str | Path, passphrase: str | None = None) -> ApplicantDossier:
+    text = Path(path).read_text(encoding="utf-8")
+    from visa_agent.encryption import decrypt_dossier_json, is_encrypted_dossier
+
+    if is_encrypted_dossier(text):
+        if not passphrase:
+            raise ValueError("Encrypted dossier requires a passphrase")
+        text = decrypt_dossier_json(text, passphrase)
+    raw = json.loads(text)
     return load_dossier_payload(raw)
 
 

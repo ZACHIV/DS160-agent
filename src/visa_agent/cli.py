@@ -42,6 +42,11 @@ from visa_agent.browser.plan import (
 )
 from visa_agent.browser.runtime import build_runtime_plan, render_runtime_plan_json
 from visa_agent.draft_bundle import build_draft_bundle, export_draft_bundle_file
+from visa_agent.encryption import (
+    is_encrypted_dossier,
+    load_encrypted_dossier,
+    save_encrypted_dossier,
+)
 from visa_agent.mapping import map_dossier_to_ds160, render_mapping_json
 from visa_agent.planner import build_execution_plan, render_execution_plan_json
 from visa_agent.schema import load_dossier
@@ -84,6 +89,8 @@ def main() -> int:
             "assist-visible-page",
             "draft-bundle",
             "export-draft-bundle",
+            "encrypt",
+            "decrypt",
         ),
         default="mapping",
         help="Output raw mappings, planning layers, or driver-ready command artifacts.",
@@ -125,7 +132,41 @@ def main() -> int:
         default="app/data/draft_bundle.js",
         help="Output path for exported local draft bundle assets.",
     )
+    parser.add_argument(
+        "--passphrase",
+        default=None,
+        help="Passphrase for encrypting or decrypting a dossier file.",
+    )
     args = parser.parse_args()
+    if args.mode == "encrypt":
+        if not args.passphrase:
+            print("Error: --passphrase is required for encrypt mode", file=sys.stderr)
+            return 1
+        if len(args.passphrase) < 8:
+            print("Error: passphrase must be at least 8 characters", file=sys.stderr)
+            return 1
+        src = Path(args.dossier_path)
+        text = src.read_text(encoding="utf-8")
+        dest = Path(args.output) if args.output else src.with_suffix(".enc.json")
+        save_encrypted_dossier(text, args.passphrase, dest)
+        print(f"Encrypted: {dest}")
+        return 0
+
+    if args.mode == "decrypt":
+        if not args.passphrase:
+            print("Error: --passphrase is required for decrypt mode", file=sys.stderr)
+            return 1
+        src = Path(args.dossier_path)
+        try:
+            dossier_dict = load_encrypted_dossier(src, args.passphrase)
+        except Exception as exc:
+            print(f"Error: decryption failed - {exc}", file=sys.stderr)
+            return 1
+        dest = Path(args.output) if args.output else src.with_name(src.stem + "_decrypted.json" if src.name.endswith(".enc.json") else src.name + ".dec.json")
+        dest.write_text(json.dumps(dossier_dict, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"Decrypted: {dest}")
+        return 0
+
     dossier = load_dossier(args.dossier_path)
     mapped_fields = map_dossier_to_ds160(dossier)
     if args.mode == "draft-bundle":

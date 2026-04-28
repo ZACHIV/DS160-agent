@@ -26,6 +26,8 @@ const progressBarContainer = document.getElementById("progress-bar-container");
 const progressBar = document.getElementById("progress-bar");
 const progressText = document.getElementById("progress-text");
 const intakeFile = document.getElementById("intake-file");
+const intakePassphrase = document.getElementById("intake-passphrase");
+const intakePassphraseField = document.getElementById("encrypt-passphrase-field");
 const loadIntakeButton = document.getElementById("load-intake");
 const intakeDocStatus = document.getElementById("intake-doc-status");
 
@@ -215,6 +217,11 @@ async function checkServerStatus() {
 }
 
 
+function isEncryptedPayload(payload) {
+  return payload && payload.format === "ds160-encrypted-v1";
+}
+
+
 async function loadIntakeDocument() {
   const file = intakeFile.files?.[0];
   if (!file) {
@@ -227,18 +234,38 @@ async function loadIntakeDocument() {
   try {
     const text = await file.text();
     const payload = JSON.parse(text);
-    const res = await fetch(`${SERVER_BASE}/dossier-document`, {
+    const encrypted = isEncryptedPayload(payload);
+    if (encrypted) {
+      intakePassphraseField.style.display = "";
+    }
+    let endpoint, body;
+    if (encrypted) {
+      const passphrase = (intakePassphrase.value || "").trim();
+      if (!passphrase) {
+        throw new Error("此文件已加密，请输入密码。");
+      }
+      endpoint = `${SERVER_BASE}/dossier-document/decrypt`;
+      body = JSON.stringify({ encrypted_payload: payload, passphrase });
+    } else {
+      endpoint = `${SERVER_BASE}/dossier-document`;
+      body = JSON.stringify(payload);
+    }
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body,
     });
     const data = await res.json();
     if (!res.ok) {
       throw new Error(data.detail || "导入资料文档失败");
     }
     intakeDocStatus.textContent = "已导入";
+    if (encrypted) {
+      intakePassphraseField.style.display = "none";
+      intakePassphrase.value = "";
+    }
     await fetchBundle();
-    pushLog("success", "导入", file.name);
+    pushLog("success", "导入", file.name + (encrypted ? " (已解密)" : ""));
   } catch (error) {
     pushLog("error", "导入失败", error.message || "失败");
     intakeDocStatus.textContent = "导入失败";
@@ -248,6 +275,30 @@ async function loadIntakeDocument() {
     checkServerStatus();
   }
 }
+
+
+intakeFile.addEventListener("change", function () {
+  const file = intakeFile.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    try {
+      const payload = JSON.parse(e.target.result);
+      if (isEncryptedPayload(payload)) {
+        intakePassphraseField.style.display = "";
+        intakeDocStatus.textContent = "已加密 - 需要密码";
+      } else {
+        intakePassphraseField.style.display = "none";
+        intakePassphrase.value = "";
+        intakeDocStatus.textContent = "未导入";
+      }
+    } catch {
+      intakePassphraseField.style.display = "none";
+      intakeDocStatus.textContent = "未导入";
+    }
+  };
+  reader.readAsText(file);
+});
 
 
 loadIntakeButton.addEventListener("click", loadIntakeDocument);
