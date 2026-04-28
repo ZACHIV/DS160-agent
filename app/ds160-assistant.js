@@ -485,6 +485,43 @@ fillAllButton.addEventListener("click", async () => {
 });
 
 
+async function checkCheckpoint() {
+  try {
+    const res = await fetch(`${SERVER_BASE}/fill/checkpoint`, { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.checkpoint && data.checkpoint.completed_pages?.length) {
+      const cp = data.checkpoint;
+      pushLog("info", "断点续填", `上次完成 ${cp.completed_pages.length} 页，停在 ${cp.current_page_key || '?'}`);
+      state.completed = {};
+      cp.completed_pages.forEach((pageId) => { state.completed[pageId] = true; });
+      if (cp.current_page_key) {
+        state.currentPageId = cp.current_page_key;
+      }
+      render();
+    }
+  } catch {
+    // checkpoint is best-effort
+  }
+}
+
+
+async function clearCheckpoint() {
+  try {
+    await fetch(`${SERVER_BASE}/fill/checkpoint`, {
+      method: "DELETE",
+      signal: AbortSignal.timeout(2000),
+    });
+    state.completed = {};
+    pushLog("info", "清除", "断点已清除");
+    render();
+  } catch {
+    // best effort
+  }
+}
+
+
 checkServerStatus();
+checkCheckpoint();
 setInterval(checkServerStatus, 5000);
 render();

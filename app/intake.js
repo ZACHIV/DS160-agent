@@ -70,10 +70,14 @@ const copyButton = document.getElementById("copy-json");
 const missingFields = document.getElementById("missing-fields");
 const warnings = document.getElementById("warnings");
 
+const photoUpload = document.getElementById("photo-upload");
+const photoPreview = document.getElementById("photo-preview");
+
 const state = {
   latestJsonText: "",
   schema: null,
   offlineMode: false,
+  photoDataUrl: null,
 };
 
 
@@ -546,6 +550,59 @@ async function copyJson() {
 }
 
 
+if (photoUpload) {
+  photoUpload.addEventListener("change", function () {
+    const file = photoUpload.files?.[0];
+    if (!file) {
+      state.photoDataUrl = null;
+      photoPreview.style.display = "none";
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      submitStatus.textContent = "照片必须是 JPEG 或 PNG 格式。";
+      photoUpload.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      const img = new Image();
+      img.onload = function () {
+        if (img.width < 600 || img.height < 600) {
+          submitStatus.textContent = `照片尺寸 ${img.width}x${img.height}，需要至少 600x600 像素（2x2英寸）。`;
+          state.photoDataUrl = null;
+          photoPreview.style.display = "none";
+          return;
+        }
+        state.photoDataUrl = e.target.result;
+        photoPreview.src = e.target.result;
+        photoPreview.style.display = "";
+        submitStatus.textContent = `照片已就绪：${img.width}x${img.height} 像素`;
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+
+function enrichPayloadWithPhoto(payload) {
+  if (state.photoDataUrl) {
+    if (!Array.isArray(payload.evidence_catalog)) {
+      payload.evidence_catalog = [];
+    }
+    const existing = payload.evidence_catalog.find((e) => e.kind === "photo");
+    if (!existing) {
+      payload.evidence_catalog.push({
+        id: "visa_photo",
+        kind: "photo",
+        description: "Visa application photo (digital)",
+      });
+    }
+  }
+  return payload;
+}
+
+
 manualForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   let payload;
@@ -564,6 +621,7 @@ manualForm.addEventListener("submit", async (event) => {
   }
 
   clearMissingHighlights();
+  payload = enrichPayloadWithPhoto(payload);
   const exportDocument = await buildExportDocument(payload);
   state.latestJsonText = JSON.stringify(exportDocument, null, 2);
   jsonPreview.textContent = state.latestJsonText;

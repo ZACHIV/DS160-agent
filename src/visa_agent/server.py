@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,13 @@ from visa_agent.dossier_contract import (
     dossier_to_dict,
     load_dossier_schema,
     validate_dossier_payload,
+)
+from visa_agent.checkpoint import (
+    FillCheckpoint,
+    checkpoint_workspace,
+    load_checkpoint,
+    save_checkpoint,
+    clear_checkpoint,
 )
 from visa_agent.draft_bundle import build_draft_bundle
 from visa_agent.encryption import encrypt_dossier_json, is_encrypted_dossier
@@ -216,6 +224,35 @@ class DossierDecryptResponse(BaseModel):
     case_id: str
 
 
+class CheckpointRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    application_id: str | None = None
+    completed_pages: list[str] = []
+    current_page_key: str | None = None
+
+
+class CheckpointResponse(BaseModel):
+    ok: bool
+    checkpoint: dict[str, Any] | None
+
+
+class DossierValidateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    case_id: str | None = None
+    identity: dict[str, Any] | None = None
+    travel_plan: dict[str, Any] | None = None
+    employment_education: dict[str, Any] | None = None
+    family_contacts: dict[str, Any] | None = None
+    security_background: dict[str, Any] | None = None
+    evidence_catalog: list[dict[str, Any]] | None = None
+
+
+class DossierValidateResponse(BaseModel):
+    ok: bool
+    errors: list[dict[str, str]]
+    warnings: list[dict[str, str]]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -399,6 +436,108 @@ def post_dossier_decrypt(req: DossierDecryptRequest):
     )
 
 
+# ---------------------------------------------------------------------------
+# Checkpoint endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/fill/checkpoint", response_model=CheckpointResponse)
+def get_fill_checkpoint():
+    """Return the current fill checkpoint if one exists."""
+    cp = load_checkpoint(checkpoint_workspace())
+    if cp is None:
+        return CheckpointResponse(ok=True, checkpoint=None)
+    return CheckpointResponse(ok=True, checkpoint=cp.to_payload())
+
+
+@app.post("/fill/checkpoint", response_model=CheckpointResponse)
+def post_fill_checkpoint(req: CheckpointRequest):
+    """Save a fill checkpoint for resuming later."""
+    dossier = _load_dossier()
+    cp = FillCheckpoint(
+        case_id=dossier.case_id,
+        application_id=req.application_id,
+        completed_pages=req.completed_pages,
+        current_page_key=req.current_page_key,
+    )
+    save_checkpoint(cp, checkpoint_workspace())
+    return CheckpointResponse(ok=True, checkpoint=cp.to_payload())
+
+
+@app.delete("/fill/checkpoint", response_model=CheckpointResponse)
+def delete_fill_checkpoint():
+    """Clear the stored fill checkpoint."""
+    clear_checkpoint(checkpoint_workspace())
+    return CheckpointResponse(ok=True, checkpoint=None)
+
+
+# ---------------------------------------------------------------------------
+# Dossier validation endpoint
+# ---------------------------------------------------------------------------
+
+
+_DS160_FIELD_CONSTRAINTS: dict[str, int] = {
+    "identity.surname": 33,
+    "identity.given_names": 33,
+    "identity.passport_number": 20,
+    "identity.national_id_number": 20,
+    "identity.us_social_security_number": 9,
+    "identity.us_taxpayer_id_number": 9,
+    "travel_plan.us_contact_phone": 20,
+    "family_contacts.father_full_name": 100,
+    "family_contacts.mother_full_name": 100,
+    "family_contacts.spouse_full_name": 100,
+    "employment_education.current_employer_name": 100,
+    "employment_education.current_job_title": 100,
+    "employment_education.school_name": 100,
+}
+
+
+def _get_nested_error(d: dict, path: str) -> str | None:
+    parts = path.split(".")
+    current: Any = d
+    for part in parts:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    if current is None or (isinstance(current, str) and not current.strip()):
+        return None
+    return str(current)
+
+
+@app.post("/dossier/validate", response_model=DossierValidateResponse)
+def post_dossier_validate(req: DossierValidateRequest):
+    """Run DS-160 field-level validation on a partial or full dossier payload."""
+    errors: list[dict[str, str]] = []
+    warnings: list[dict[str, str]] = []
+    data = {k: v for k, v in req.model_dump().items() if v is not None}
+
+    for field_path, max_len in _DS160_FIELD_CONSTRAINTS.items():
+        value = _get_nested_error(data, field_path)
+        if value and len(value) > max_len:
+            errors.append({
+                "field": field_path,
+                "message": f"Exceeds {max_len} character limit (currently {len(value)} chars).",
+            })
+
+    # Check date format validity
+    date_paths = ["identity.date_of_birth", "identity.passport_issue_date",
+                  "identity.passport_expiration_date", "travel_plan.intended_arrival_date"]
+    for fp in date_paths:
+        value = _get_nested_error(data, fp)
+        if value:
+            import re
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", value):
+                errors.append({"field": fp, "message": "Use YYYY-MM-DD date format."})
+
+    # Passport checks
+    pn = _get_nested_error(data, "identity.passport_number")
+    if pn and not re.match(r"^[A-Za-z0-9]+$", pn):
+        errors.append({"field": "identity.passport_number", "message": "Passport number should be alphanumeric."})
+
+    return DossierValidateResponse(ok=len(errors) == 0, errors=errors, warnings=warnings)
+
+
 @app.get("/draft-bundle", response_model=DraftBundleResponse)
 def get_draft_bundle():
     """Build the assistant bundle from the active dossier document or legacy dossier."""
@@ -476,6 +615,24 @@ def post_fill_and_continue(req: FillPageRequest):
         missing = list(fill_payload.get("missing") or [])
         raw_new_key = result.get("new_page_key")
         new_page_key = bundle_page_id(raw_new_key) if raw_new_key else None
+
+        # Auto-save checkpoint on success
+        if result.get("fill_ok"):
+            try:
+                existing = load_checkpoint(checkpoint_workspace())
+                completed = list(existing.completed_pages) if existing else []
+                if canonical not in completed:
+                    completed.append(canonical)
+                cp = FillCheckpoint(
+                    case_id=dossier.case_id,
+                    application_id=result.get("application_id"),
+                    completed_pages=completed,
+                    current_page_key=new_page_key or raw_new_key,
+                )
+                save_checkpoint(cp, checkpoint_workspace())
+            except Exception:
+                pass  # checkpoint save is best-effort, don't fail the fill
+
         return FillContinueResponse(
             ok=bool(result.get("fill_ok") and result.get("next_ok")),
             page_key=canonical,

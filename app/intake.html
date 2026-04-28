@@ -318,6 +318,15 @@
                 <small class="field-hint" data-hint-for="evidence_catalog"></small>
               </label>
             </div>
+            <div class="photo-upload-section">
+              <label class="full">
+                <span>签证照片上传</span>
+                <input id="photo-upload" type="file" accept="image/jpeg,image/png" />
+                <small class="photo-hint">需要2x2英寸(600x600像素以上)，白色背景，JPEG格式</small>
+                <img id="photo-preview" style="display:none;max-width:200px;margin-top:8px;border-radius:4px" alt="照片预览" />
+                <small class="field-hint" data-hint-for="photo_upload"></small>
+              </label>
+            </div>
             <div class="form-actions compact">
               <button id="manual-submit" type="submit" class="primary">用手填内容生成 dossier</button>
             </div>
