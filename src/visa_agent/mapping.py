@@ -406,7 +406,7 @@ FIELD_RESOLVERS: list[Resolver] = [
         "Mother's full name should be confirmed.",
     ),
     _security_answer("security.communicable_disease", "communicable_disease"),
-    _security_answer("security.arrest_history", "arrest_history"),
+    _security_answer("security.arrest_history", "arrested_or_convicted"),
     # ---- identity extras ----
     lambda dossier: _ready(
         "identity.other_nationality", "NO",

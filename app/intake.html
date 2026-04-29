@@ -236,23 +236,62 @@
             </div>
 
             <!-- ============================================================
-                 SECTION 8: SECURITY (EXPANDED)
+                 SECTION 8: SECURITY (ALIGNED 1:1 WITH DS-160 FILL ENGINE)
+                 Keys must match _fill_security_questions() in live_form_fill.py
                  ============================================================ -->
-            <h3 class="section-label">安全背景</h3>
+            <h3 class="section-label">安全背景 Part 1: 医疗/健康</h3>
             <div class="security-grid">
-              <label class="toggle"><span>有传染病相关情况</span><input type="checkbox" name="security_background.yes_no_answers.communicable_disease" /></label>
-              <label class="toggle"><span>有精神或身体疾病影响行为能力</span><input type="checkbox" name="security_background.yes_no_answers.mental_physical_disorder" /></label>
-              <label class="toggle"><span>有药物滥用或成瘾问题</span><input type="checkbox" name="security_background.yes_no_answers.substance_abuse" /></label>
-              <label class="toggle"><span>曾被逮捕或定罪</span><input type="checkbox" name="security_background.yes_no_answers.arrest_history" /></label>
-              <label class="toggle"><span>曾违反或协助他人违反美国移民法</span><input type="checkbox" name="security_background.yes_no_answers.immigration_violation" /></label>
-              <label class="toggle"><span>曾被美国驱逐出境</span><input type="checkbox" name="security_background.yes_no_answers.us_removal" /></label>
-              <label class="toggle"><span>曾参与恐怖活动</span><input type="checkbox" name="security_background.yes_no_answers.terrorist_activity" /></label>
-              <label class="toggle"><span>曾服役于武装/叛乱组织</span><input type="checkbox" name="security_background.yes_no_answers.insurgent_service" /></label>
-              <label class="toggle"><span>曾参与人口贩卖</span><input type="checkbox" name="security_background.yes_no_answers.human_trafficking" /></label>
-              <label class="toggle"><span>曾参与洗钱</span><input type="checkbox" name="security_background.yes_no_answers.money_laundering" /></label>
+              <label class="toggle"><span>有传染性疾病（如结核病等）</span><input type="checkbox" name="security_background.yes_no_answers.communicable_disease" /></label>
+              <label class="toggle"><span>有身体或精神疾病影响行为能力</span><input type="checkbox" name="security_background.yes_no_answers.physical_or_mental_disorder" /></label>
+              <label class="toggle"><span>有药物滥用或成瘾问题</span><input type="checkbox" name="security_background.yes_no_answers.drug_abuser" /></label>
             </div>
+
+            <h3 class="section-label">安全背景 Part 2: 刑事/非法活动</h3>
+            <div class="security-grid">
+              <label class="toggle"><span>曾被捕或被定罪</span><input type="checkbox" name="security_background.yes_no_answers.arrested_or_convicted" /></label>
+              <label class="toggle"><span>涉及管制物质（毒品等）违法行为</span><input type="checkbox" name="security_background.yes_no_answers.controlled_substances" /></label>
+              <label class="toggle"><span>涉及卖淫或嫖娼</span><input type="checkbox" name="security_background.yes_no_answers.prostitution_or_vice" /></label>
+              <label class="toggle"><span>涉及洗钱</span><input type="checkbox" name="security_background.yes_no_answers.money_laundering" /></label>
+              <label class="toggle"><span>涉及人口贩卖</span><input type="checkbox" name="security_background.yes_no_answers.human_trafficking" /></label>
+              <label class="toggle"><span>协助或参与严重形式的人口贩卖</span><input type="checkbox" name="security_background.yes_no_answers.assisted_severe_trafficking" /></label>
+              <label class="toggle"><span>涉及人口贩卖相关人员/收益</span><input type="checkbox" name="security_background.yes_no_answers.human_trafficking_related" /></label>
+            </div>
+
+            <h3 class="section-label">安全背景 Part 3: 恐怖/暴力/人权</h3>
+            <div class="security-grid">
+              <label class="toggle"><span>曾参与非法活动/组织</span><input type="checkbox" name="security_background.yes_no_answers.illegal_activity" /></label>
+              <label class="toggle"><span>曾参与恐怖活动</span><input type="checkbox" name="security_background.yes_no_answers.terrorist_activity" /></label>
+              <label class="toggle"><span>曾支持/资助恐怖活动</span><input type="checkbox" name="security_background.yes_no_answers.terrorist_support" /></label>
+              <label class="toggle"><span>曾是恐怖组织成员或代表</span><input type="checkbox" name="security_background.yes_no_answers.terrorist_org" /></label>
+              <label class="toggle"><span>曾有亲属参与恐怖活动</span><input type="checkbox" name="security_background.yes_no_answers.terrorist_rel" /></label>
+              <label class="toggle"><span>参与过种族灭绝</span><input type="checkbox" name="security_background.yes_no_answers.genocide" /></label>
+              <label class="toggle"><span>参与过酷刑</span><input type="checkbox" name="security_background.yes_no_answers.torture" /></label>
+              <label class="toggle"><span>参与过法外处决/政治暴力</span><input type="checkbox" name="security_background.yes_no_answers.extrajudicial_violence" /></label>
+              <label class="toggle"><span>曾作为儿童兵参与武装冲突</span><input type="checkbox" name="security_background.yes_no_answers.child_soldier" /></label>
+              <label class="toggle"><span>曾违反宗教自由</span><input type="checkbox" name="security_background.yes_no_answers.religious_freedom" /></label>
+              <label class="toggle"><span>曾参与强制人口控制政策</span><input type="checkbox" name="security_background.yes_no_answers.population_controls" /></label>
+              <label class="toggle"><span>涉及非法器官/人体组织移植</span><input type="checkbox" name="security_background.yes_no_answers.transplant" /></label>
+            </div>
+
+            <h3 class="section-label">安全背景 Part 4: 移民违规</h3>
+            <div class="security-grid">
+              <label class="toggle"><span>曾在美国被要求离开/驱逐听证</span><input type="checkbox" name="security_background.yes_no_answers.removal_hearing" /></label>
+              <label class="toggle"><span>曾以欺诈或虚假陈述获取签证/入境</span><input type="checkbox" name="security_background.yes_no_answers.immigration_fraud" /></label>
+              <label class="toggle"><span>曾未按时出席移民听证</span><input type="checkbox" name="security_background.yes_no_answers.fail_to_attend" /></label>
+              <label class="toggle"><span>曾违反签证条款停留/工作</span><input type="checkbox" name="security_background.yes_no_answers.visa_violation" /></label>
+              <label class="toggle"><span>曾被美国驱逐/递解出境</span><input type="checkbox" name="security_background.yes_no_answers.deport" /></label>
+            </div>
+
+            <h3 class="section-label">安全背景 Part 5: 其他</h3>
+            <div class="security-grid">
+              <label class="toggle"><span>曾非法转移/扣留美国公民子女监护权</span><input type="checkbox" name="security_background.yes_no_answers.child_custody" /></label>
+              <label class="toggle"><span>曾以美国公民身份投票违反规定</span><input type="checkbox" name="security_background.yes_no_answers.voting_violation" /></label>
+              <label class="toggle"><span>曾为避税放弃美国国籍</span><input type="checkbox" name="security_background.yes_no_answers.renounce_exp" /></label>
+              <label class="toggle"><span>曾在美国公立学校就读未偿还费用</span><input type="checkbox" name="security_background.yes_no_answers.attend_public_school_without_reimbursing" /></label>
+            </div>
+
             <div class="grid two">
-              <label class="full"><span>Security Explanations JSON</span><textarea name="security_background.explanations" rows="4" placeholder='{"arrest_history":"Explain if yes"}'></textarea></label>
+              <label class="full"><span>Security Explanations JSON（如有 yes 需要说明）</span><textarea name="security_background.explanations" rows="4" placeholder='{"arrested_or_convicted":"Briefly explain the circumstances"}'></textarea></label>
               <label class="full"><span>Security Source IDs</span><input name="security_background.source_ids" required placeholder="security_review_form" /></label>
             </div>
 
