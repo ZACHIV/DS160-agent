@@ -53,6 +53,29 @@ bash scripts/start.sh
 PYTHONPATH=src python -m visa_agent.server
 ```
 
+**开发时不需要每次重新编译。** 直接修改 `src/` 和 `app/` 下的代码，重启服务即可生效。只有要分发给别人时，才需要构建二进制包。
+
+## 修改代码后如何重新构建
+
+改了 Python 代码（`src/visa_agent/`）、前端文件（`app/`）或数据文件（`docs/`、`sample_data/`）之后，如果要在二进制包中生效：
+
+```bash
+# 重新编译（覆盖旧的 dist/ 目录）
+bash scripts/build.sh
+
+# 或编译为单文件
+bash scripts/build.sh onefile
+```
+
+| 场景 | 是否需要 rebuild |
+|---|---|
+| 修改 `src/visa_agent/*.py` | 需要 |
+| 修改 `app/*.html` / `app/*.js` / `app/*.css` | 需要 |
+| 修改 `docs/dossier.schema.json` | 需要 |
+| 修改 `sample_data/*.json` | 需要 |
+| 修改 `scripts/build.sh` 自身 | 不需要 |
+| 开发调试（通过 `start.sh` 运行） | 不需要，重启服务即可 |
+
 ## 使用流程
 
 ```
