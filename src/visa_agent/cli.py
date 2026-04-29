@@ -54,12 +54,12 @@ from visa_agent.schema import load_dossier
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate a DS-160 mapping draft from a dossier JSON.")
+    from visa_agent._paths import sample_data_dir
+
     parser.add_argument(
         "dossier_path",
         nargs="?",
-        default=str(
-            Path(__file__).resolve().parents[2] / "sample_data" / "china_b1b2_sample.json"
-        ),
+        default=str(sample_data_dir() / "china_b1b2_sample.json"),
         help="Path to an applicant dossier JSON file.",
     )
     parser.add_argument(

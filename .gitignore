@@ -4,6 +4,9 @@
 .local-browser-profile/
 .playwright-cli/
 .visible-browser-profile/
+.chrome-profile/
+.checkpoint/
+.ds160/
 
 # Python
 __pycache__/

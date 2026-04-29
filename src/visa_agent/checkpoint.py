@@ -65,4 +65,5 @@ def clear_checkpoint(workspace: Path) -> None:
 
 
 def checkpoint_workspace() -> Path:
-    return Path(__file__).resolve().parents[3] / ".checkpoint"
+    from visa_agent._paths import project_root
+    return project_root().parent / ".checkpoint"

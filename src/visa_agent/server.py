@@ -17,8 +17,10 @@ from pydantic import BaseModel, ConfigDict
 # Allow running directly: python -m visa_agent.server
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-APP_DIR = PROJECT_ROOT / "app"
+from visa_agent._paths import app_dir as _app_dir, project_root as _project_root, sample_data_dir as _sample_data_dir
+
+PROJECT_ROOT = _project_root()
+APP_DIR = _app_dir()
 
 from visa_agent.browser.cdp_client import find_target_websocket_url, list_debug_targets
 from visa_agent.browser.live_form_fill import (
@@ -60,7 +62,7 @@ from visa_agent.schema import load_dossier, load_dossier_payload
 CDP_PORT = int(os.environ.get("CDP_PORT", "9222"))
 DOSSIER_PATH = os.environ.get(
     "DOSSIER_PATH",
-    str(Path(__file__).parent.parent.parent / "sample_data" / "china_b1b2_sample.json"),
+    str(_sample_data_dir() / "china_b1b2_sample.json"),
 )
 ACTIVE_DOSSIER_DOCUMENT: dict[str, Any] | None = None
 

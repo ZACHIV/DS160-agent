@@ -1,135 +1,100 @@
-# DS-160 Agent Quickstart
+# DS-160 签证助手 Quickstart
 
-## Purpose
+China B1/B2 签证 DS-160 表格一键填写工具。
 
-- `app/intake.html`: collect full dossier data via manual input; export final JSON for execution.
-- `app/ds160-assistant.html`: import JSON and autofill DS-160 via local FastAPI + Chrome CDP.
+## 一键使用（推荐）
 
-## Runtime Contract
+### 下载二进制包
 
-- Python 3.10+
-- Chrome/Chromium installed
-- macOS or Ubuntu
-- FastAPI service: `http://127.0.0.1:8765`
-- Chrome remote debugging: `9222`
-
-## Install
-
-macOS / Ubuntu:
+从 Release 页面下载对应平台的 `ds160-assistant` 包，解压后：
 
 ```bash
-cd /path/to/amercican_visa
+# Linux / macOS
+./ds160-assistant
+```
+
+首次运行会自动：
+- 启动 Chrome 并打开 CEAC 签证申请页面
+- 启动本地服务 (http://127.0.0.1:8765)
+- 打开浏览器进入操作界面
+
+只需安装 Chrome/Chromium 浏览器即可。Python 无需安装。
+
+### 从源码构建
+
+```bash
+git clone <repo>
+cd amercican_visa
+
+# 安装依赖 + 构建
 bash scripts/install-deps.sh
-source .venv/bin/activate
+bash scripts/build.sh
+
+# 运行
+./dist/ds160-assistant/ds160-assistant
 ```
 
-Windows PowerShell:
-
-```powershell
-cd \path\to\amercican_visa
-.\scripts\install-deps.ps1
-.\.venv\Scripts\Activate.ps1
+构建 onefile 单文件版本：
+```bash
+bash scripts/build.sh onefile
+# 输出: dist/ds160-assistant (单个可执行文件)
 ```
 
-- If `uv` is installed, the script uses it.
-- If `uv` is not installed, the script falls back to `python -m venv` + `pip`.
-- Runtime server dependencies are defined in `requirements.txt`.
-
-## Start
-
-macOS / Ubuntu:
+## 开发环境
 
 ```bash
+bash scripts/install-deps.sh
+
+# 启动开发服务（require Chrome）
 bash scripts/start.sh
+# 打开 http://127.0.0.1:8765
+
+# 或者手动启动
+PYTHONPATH=src python -m visa_agent.server
 ```
 
-Windows PowerShell:
+## 使用流程
 
-```powershell
-.\scripts\start.ps1
+```
+1. 打开 http://127.0.0.1:8765
+2. 选择"填写资料" → 录入申请信息 → 导出 dossier JSON
+3. 选择"开始填写" → 导入 dossier JSON
+4. 在 Chrome 窗口中完成 CEAC 验证码
+5. 点击"一键填入"开始自动填表
 ```
 
-## Stop
+## 数据安全
 
-macOS / Ubuntu:
-
-```bash
-bash scripts/stop.sh
-```
-
-Windows PowerShell:
-
-```powershell
-.\scripts\stop.ps1
-```
-
-## Data Contract
-
-- Intake UI works directly with the full dossier schema.
-- Exported/downloaded JSON is a full dossier, e.g. `china-b1b2-dossier.json`.
-- Assistant accepts full dossier JSON only.
-- Offline intake mode still exports the same full dossier structure locally.
-
-## Happy Path
-
-1. Run start script.
-2. Use `app/intake.html`.
-3. Fill manually.
-4. Export JSON.
-5. Open `app/ds160-assistant.html`.
-6. Import same JSON.
-7. Navigate DS-160 in Chrome.
-8. Click fill/save page by page.
+- 导出资料可选择**加密导出**（AES-256-GCM），需要设置密码
+- 导入加密文件时输入密码即可解密
+- 加密/解密支持离线模式（浏览器端 Web Crypto API）
 
 ## Key Files
 
-- `scripts/install-deps.sh`
-- `scripts/install-deps.ps1`
-- `scripts/start.sh`
-- `scripts/start.ps1`
-- `scripts/stop.sh`
-- `scripts/stop.ps1`
-- `app/intake.js`
-- `app/ds160-assistant.js`
-- `src/visa_agent/server.py`
-- `src/visa_agent/dossier_contract.py`
-- `src/visa_agent/browser/live_form_fill.py`
-- `docs/dossier.schema.json`
-- `sample_data/china_b1b2_fake_test.json`
-- `sample_data/china_b1b2_sample.json`
+- `src/visa_agent/__main__.py` — 应用启动入口
+- `src/visa_agent/server.py` — FastAPI 服务
+- `src/visa_agent/encryption.py` — 加密模块
+- `src/visa_agent/checkpoint.py` — 断点续填
+- `src/visa_agent/audit_log.py` — 操作审计日志
+- `src/visa_agent/browser/live_form_fill.py` — 表单填写引擎
+- `app/intake.html` + `app/intake.js` — 资料采集页
+- `app/ds160-assistant.html` + `app/ds160-assistant.js` — 自动填表页
+- `docs/dossier.schema.json` — 申请资料规范
+- `scripts/build.sh` — PyInstaller 构建脚本
+- `scripts/start.sh` — 开发环境一键启动
 
 ## Verify
 
-Service up:
-
 ```bash
+# 运行测试
+PYTHONPATH=src python -m pytest tests/
+
+# 检查服务
 curl http://127.0.0.1:8765/status
+
+# 检查 DOM 漂移
+curl http://127.0.0.1:8765/dom-drift
+
+# 查看审计日志
+curl http://127.0.0.1:8765/audit-log
 ```
-
-Tests:
-
-```bash
-PYTHONPATH=src python -m pytest tests/test_intake.py tests/test_mapping.py tests/test_draft_bundle.py
-```
-
-## Troubleshooting
-
-CDP not reachable:
-
-```bash
-lsof -i :9222
-pkill -f "remote-debugging-port=9222"
-```
-
-Server not reachable:
-
-```bash
-lsof -i :8765
-bash scripts/start.sh
-```
-
-If autofill fails:
-
-- confirm Chrome is on a supported DS-160 page
-- inspect assistant review/blocked fields
-- check browser console and server logs

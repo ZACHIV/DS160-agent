@@ -8,7 +8,8 @@ from pathlib import Path
 
 
 def _audit_dir() -> Path:
-    return Path(__file__).resolve().parents[3] / ".ds160" / "logs"
+    from visa_agent._paths import project_root
+    return project_root().parent / ".ds160" / "logs"
 
 
 def _today_log() -> Path:
