@@ -119,7 +119,19 @@ class LiveFormFillTests(unittest.TestCase):
         self.assertEqual(dossier.identity.birth_country, "CHINA")
 
     def test_address_phone_defaults_returns_none_without_contact_data(self) -> None:
+        # Build minimal dossier without personal_contact to verify None fallback
         dossier = load_dossier(SAMPLE_PATH)
+        dossier = dossier.__class__(
+            case_id=dossier.case_id,
+            identity=dossier.identity,
+            travel_plan=dossier.travel_plan,
+            employment_education=dossier.employment_education,
+            family_contacts=dossier.family_contacts,
+            security_background=dossier.security_background,
+            evidence_catalog=dossier.evidence_catalog,
+            personal_contact=None,
+            previous_travel=None,
+        )
         defaults = _address_phone_defaults(dossier)
         self.assertIsNone(defaults)
 

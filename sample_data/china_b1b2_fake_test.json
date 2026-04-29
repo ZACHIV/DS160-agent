@@ -16,7 +16,14 @@
     "passport_issue_date": "2024-01-08",
     "passport_expiration_date": "2034-01-07",
     "passport_book_number": null,
-    "source_ids": ["passport_scan_test"]
+    "source_ids": [
+      "passport_scan_test"
+    ],
+    "other_nationality": false,
+    "permanent_resident_other_country": false,
+    "national_id_number": null,
+    "us_social_security_number": null,
+    "us_taxpayer_id_number": null
   },
   "travel_plan": {
     "visa_class": "B1/B2",
@@ -33,7 +40,10 @@
     "us_contact_postal_code": "98101",
     "us_contact_phone": "+1 206 555 0198",
     "us_contact_email": "olivia.chen@exampleforum.test",
-    "source_ids": ["itinerary_email_test", "event_invitation_test"]
+    "source_ids": [
+      "itinerary_email_test",
+      "event_invitation_test"
+    ]
   },
   "employment_education": {
     "primary_occupation": "BUSINESSPERSON",
@@ -41,7 +51,9 @@
     "current_employer_address": "88 Demo Plaza, Chaoyang District, Beijing, China",
     "monthly_income_local": "28000",
     "school_name": null,
-    "source_ids": ["employment_letter_test"]
+    "source_ids": [
+      "employment_letter_test"
+    ]
   },
   "family_contacts": {
     "father_full_name": "LI GUOQIANG",
@@ -49,7 +61,9 @@
     "spouse_full_name": null,
     "us_relative_name": null,
     "us_relative_status": null,
-    "source_ids": ["family_intake_form_test"]
+    "source_ids": [
+      "family_intake_form_test"
+    ]
   },
   "security_background": {
     "yes_no_answers": {
@@ -57,7 +71,9 @@
       "arrest_history": false
     },
     "explanations": {},
-    "source_ids": ["security_review_form_test"]
+    "source_ids": [
+      "security_review_form_test"
+    ]
   },
   "evidence_catalog": [
     {
@@ -90,5 +106,37 @@
       "kind": "review_form",
       "description": "Signed security background questionnaire with no findings."
     }
-  ]
+  ],
+  "personal_contact": {
+    "home_address_line1": "Room 501, Building 3, 88 Huaihai Rd",
+    "home_address_line2": null,
+    "home_city": "Shanghai",
+    "home_state": "Shanghai",
+    "home_postal_code": "200000",
+    "home_country": "CHINA",
+    "primary_phone": "+86 138 0000 1234",
+    "secondary_phone": null,
+    "work_phone": "+86 21 1234 5678",
+    "email": "zhangwei@example.com",
+    "social_media_platform": "WeChat",
+    "social_media_handle": "@zhangwei",
+    "mailing_same_as_home": true,
+    "source_ids": []
+  },
+  "previous_travel": {
+    "has_previous_us_travel": false,
+    "last_arrival_date": null,
+    "last_length_of_stay_value": null,
+    "last_length_of_stay_unit": null,
+    "has_previous_us_visa": false,
+    "previous_visa_number": null,
+    "previous_visa_issue_date": null,
+    "visa_ever_refused": false,
+    "visa_ever_lost": false,
+    "visa_ever_cancelled": false,
+    "has_immigrant_petition": false,
+    "has_us_driver_license": false,
+    "ten_print_collected": false,
+    "source_ids": []
+  }
 }

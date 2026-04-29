@@ -129,7 +129,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--output",
-        default="app/data/draft_bundle.js",
+        default="export/draft_bundle.js",
         help="Output path for exported local draft bundle assets.",
     )
     parser.add_argument(

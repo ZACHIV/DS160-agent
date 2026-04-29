@@ -119,6 +119,66 @@ const state = {
 };
 
 
+// ---------- localStorage draft save ----------
+
+const DRAFT_KEY = "ds160_intake_draft";
+
+function saveDraft() {
+  var data = {};
+  Array.from(manualForm.elements).forEach(function (el) {
+    if (!el.name) return;
+    if (el.type === "checkbox") { data[el.name] = el.checked; return; }
+    data[el.name] = el.value || "";
+  });
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(data)); } catch (_) {}
+}
+
+function loadDraft() {
+  try {
+    var raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return false;
+    var data = JSON.parse(raw);
+    Object.keys(data).forEach(function (name) {
+      var el = manualForm.elements.namedItem(name);
+      if (!el || el instanceof RadioNodeList) return;
+      if (el.type === "checkbox") { el.checked = !!data[name]; return; }
+      el.value = data[name] || "";
+    });
+    return true;
+  } catch (_) { return false; }
+}
+
+function updateProgress() {
+  var all = manualForm.querySelectorAll("input:not([type=checkbox]):not([type=file]), select, textarea");
+  var filled = 0;
+  all.forEach(function (el) { if (String(el.value || "").trim()) filled += 1; });
+  var pct = all.length ? Math.round((filled / all.length) * 100) : 0;
+  var bar = document.getElementById("form-progress-bar");
+  var txt = document.getElementById("form-progress-text");
+  if (bar) bar.style.width = pct + "%";
+  if (txt) txt.textContent = "已填写: " + pct + "%";
+}
+
+// Auto-save every 3s and on input
+var _draftTimer = null;
+manualForm.addEventListener("input", function () {
+  updateProgress();
+  if (_draftTimer) clearTimeout(_draftTimer);
+  _draftTimer = setTimeout(saveDraft, 1500);
+});
+manualForm.addEventListener("change", function () {
+  updateProgress();
+  if (_draftTimer) clearTimeout(_draftTimer);
+  _draftTimer = setTimeout(saveDraft, 1500);
+});
+
+// Load draft on startup
+if (loadDraft()) {
+  submitStatus.textContent = "已恢复上次填写的草稿。";
+  setTimeout(updateProgress, 100);
+}
+
+
 function activateOfflineMode() {
   state.offlineMode = true;
   submitStatus.textContent = OFFLINE_MODE_MESSAGE;

@@ -216,6 +216,8 @@ class DossierPreviewRequest(BaseModel):
     family_contacts: dict[str, Any]
     security_background: dict[str, Any]
     evidence_catalog: list[dict[str, Any]] = []
+    personal_contact: dict[str, Any] | None = None
+    previous_travel: dict[str, Any] | None = None
 
 
 class DossierEncryptRequest(BaseModel):
@@ -261,6 +263,8 @@ class DossierValidateRequest(BaseModel):
     family_contacts: dict[str, Any] | None = None
     security_background: dict[str, Any] | None = None
     evidence_catalog: list[dict[str, Any]] | None = None
+    personal_contact: dict[str, Any] | None = None
+    previous_travel: dict[str, Any] | None = None
 
 
 class DossierValidateResponse(BaseModel):

@@ -16,6 +16,11 @@
     "passport_issue_date": "2023-05-12",
     "passport_expiration_date": "2033-05-11",
     "passport_book_number": null,
+    "other_nationality": false,
+    "permanent_resident_other_country": false,
+    "national_id_number": null,
+    "us_social_security_number": null,
+    "us_taxpayer_id_number": null,
     "source_ids": ["passport_scan"]
   },
   "travel_plan": {
@@ -90,5 +95,37 @@
       "kind": "review_form",
       "description": "Operator-confirmed security background questionnaire."
     }
-  ]
+  ],
+  "personal_contact": {
+    "home_address_line1": "Room 501, Building 3, 88 Huaihai Rd",
+    "home_address_line2": null,
+    "home_city": "Shanghai",
+    "home_state": "Shanghai",
+    "home_postal_code": "200000",
+    "home_country": "CHINA",
+    "primary_phone": "+86 138 0000 1234",
+    "secondary_phone": null,
+    "work_phone": "+86 21 1234 5678",
+    "email": "zhangwei@example.com",
+    "social_media_platform": "WeChat",
+    "social_media_handle": "@zhangwei",
+    "mailing_same_as_home": true,
+    "source_ids": []
+  },
+  "previous_travel": {
+    "has_previous_us_travel": false,
+    "last_arrival_date": null,
+    "last_length_of_stay_value": null,
+    "last_length_of_stay_unit": null,
+    "has_previous_us_visa": false,
+    "previous_visa_number": null,
+    "previous_visa_issue_date": null,
+    "visa_ever_refused": false,
+    "visa_ever_lost": false,
+    "visa_ever_cancelled": false,
+    "has_immigrant_petition": false,
+    "has_us_driver_license": false,
+    "ten_print_collected": false,
+    "source_ids": []
+  }
 }
