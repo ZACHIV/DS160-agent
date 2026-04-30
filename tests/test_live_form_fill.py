@@ -24,10 +24,15 @@ from visa_agent.browser.live_form_fill import (
     _split_employer_address,
     _work_education_previous_defaults,
     _work_education_additional_defaults,
+    click_next_and_wait,
+    detect_current_page,
+    extract_application_id,
     fill_personal1_page,
     fill_personal2_page,
     fill_previous_travel_page,
     fill_travel_page,
+    fill_family_relatives_page,
+    fill_us_contact_page,
 )
 from visa_agent.page_ids import PAGE_ID_NORMALIZE
 
@@ -112,6 +117,55 @@ class LiveFormFillTests(unittest.TestCase):
             ],
         ):
             self.assertEqual(_find_page_ws_url("passport"), "ws://127.0.0.1:9222/devtools/page/test")
+
+    def test_detect_current_page_extracts_application_id(self) -> None:
+        with patch("visa_agent.browser.live_form_fill.find_target_websocket_url", return_value="ws://test"), patch(
+            "visa_agent.browser.live_form_fill._runtime_eval",
+            return_value={
+                "value": {
+                    "title": "Nonimmigrant Visa - Personal Information 1",
+                    "url": "https://ceac.state.gov/GenNIV/General/complete/complete_personal.aspx?node=Personal1",
+                    "application_id": "AA00FI6XAL",
+                }
+            },
+        ):
+            result = detect_current_page()
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.payload["page_key"], "personal1")
+        self.assertEqual(result.payload["application_id"], "AA00FI6XAL")
+
+    def test_extract_application_id_reads_aa_identifier(self) -> None:
+        with patch("visa_agent.browser.live_form_fill.find_target_websocket_url", return_value="ws://test"), patch(
+            "visa_agent.browser.live_form_fill._runtime_eval",
+            return_value={"value": {"application_id": "AA00FI6XAL"}},
+        ) as runtime_eval:
+            result = extract_application_id()
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.payload["application_id"], "AA00FI6XAL")
+        self.assertIn("Application ID", runtime_eval.call_args.args[1])
+
+    def test_click_next_uses_next_button_not_save_button(self) -> None:
+        responses = [
+            {"value": {"url": "https://ceac.state.gov/GenNIV/General/complete/x.aspx?node=Personal1", "title": "Personal Information 1"}},
+            {"value": {"status": "NEXT_CLICKED", "clicked": {"id": "ctl00_SiteContentPlaceHolder_UpdateButton3"}}},
+            {"value": {"url": "https://ceac.state.gov/GenNIV/General/complete/y.aspx?node=Personal2", "title": "Personal Information 2"}},
+        ]
+        with patch("visa_agent.browser.live_form_fill.find_target_websocket_url", return_value="ws://test"), patch(
+            "visa_agent.browser.live_form_fill._runtime_eval",
+            side_effect=responses,
+        ) as runtime_eval, patch("visa_agent.browser.live_form_fill.time.sleep"):
+            result = click_next_and_wait(timeout_s=0.1)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.payload["new_page_key"], "personal2")
+        click_expression = runtime_eval.call_args_list[1].args[1]
+        self.assertIn("#ctl00_SiteContentPlaceHolder_UpdateButton3", click_expression)
+        self.assertNotIn("querySelector('#ctl00_SiteContentPlaceHolder_UpdateButton2')", click_expression)
+        self.assertIn("needToConfirm = false", click_expression)
+        self.assertIn("addEventListener('beforeunload'", click_expression)
+        self.assertIn("btn.click()", click_expression)
 
     def test_sample_dossier_has_personal1_values(self) -> None:
         dossier = load_dossier(SAMPLE_PATH)
@@ -226,6 +280,45 @@ class LiveFormFillTests(unittest.TestCase):
         self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_TRAVEL_IND', 'Y')", first_expression)
         self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_IND', 'Y')", second_expression)
         self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_DTEDay", third_expression)
+
+    def test_us_contact_fill_waits_for_address_fields_after_setup(self) -> None:
+        dossier = load_dossier(SAMPLE_PATH)
+        responses = [
+            {"value": {"filled": ["contact_name_known", "contact_org_known", "contact_relationship"], "missing": []}},
+            {"value": {"filled": ["contact_surname", "contact_addr1", "contact_email"], "missing": []}},
+        ]
+        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
+            "visa_agent.browser.live_form_fill._runtime_eval",
+            side_effect=responses,
+        ) as runtime_eval, patch(
+            "visa_agent.browser.live_form_fill._wait_for_selector",
+            return_value=True,
+        ) as wait_for_selector, patch("visa_agent.browser.live_form_fill.time.sleep"):
+            result = fill_us_contact_page(dossier)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(runtime_eval.call_count, 2)
+        self.assertEqual(wait_for_selector.call_count, 3)
+        first_expression = runtime_eval.call_args_list[0].args[1]
+        second_expression = runtime_eval.call_args_list[1].args[1]
+        self.assertIn("cbxUS_POC_NAME_NA", first_expression)
+        self.assertIn("ddlUS_POC_REL_TO_APP", first_expression)
+        self.assertIn("tbxUS_POC_ADDR_LN1", second_expression)
+        self.assertIn("tbxUS_POC_EMAIL_ADDR", second_expression)
+
+    def test_family_relatives_fill_marks_unknown_parent_dobs_when_missing(self) -> None:
+        dossier = load_dossier(SAMPLE_PATH)
+        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
+            "visa_agent.browser.live_form_fill._runtime_eval",
+            return_value={"value": {"filled": ["father_dob_unknown", "mother_dob_unknown"], "missing": []}},
+        ) as runtime_eval:
+            result = fill_family_relatives_page(dossier)
+
+        self.assertTrue(result.ok)
+        expression = runtime_eval.call_args.args[1]
+        self.assertIn("cbxFATHER_DOB_UNK_IND', true", expression)
+        self.assertIn("cbxMOTHER_DOB_UNK_IND', true", expression)
+        self.assertNotIn("_month_abbrev(father_dob[5:7])", expression)
 
     def test_security_yes_answers_use_staged_textarea_fill(self) -> None:
         dossier = load_dossier(SAMPLE_PATH)

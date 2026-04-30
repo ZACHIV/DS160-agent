@@ -258,7 +258,7 @@ button.primary {
 
 .status-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -281,6 +281,7 @@ button.primary {
   display: block;
   margin-top: 6px;
   font-size: 24px;
+  overflow-wrap: anywhere;
 }
 
 .panel-head {

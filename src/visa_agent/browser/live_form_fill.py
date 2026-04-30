@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 
-from visa_agent.browser.cdp_client import find_target_websocket_url, list_debug_targets
+from visa_agent.browser.cdp_client import CDPWebSocket, find_target_websocket_url, list_debug_targets
 from visa_agent.browser.visible_control import VisibleControlResult, _runtime_eval
 from visa_agent.schema import ApplicantDossier
 
@@ -472,15 +472,28 @@ def fill_us_contact_page(dossier: ApplicantDossier) -> VisibleControlResult:
     surname, given_names = _split_contact_name(t.us_contact_name)
     relationship = _us_contact_relationship(t)
     us_phone = _normalize_phone_number(t.us_contact_phone, fallback="4155550100")
-    expression = (
+    ensure_expression = (
         "(() => { "
         + _JS_HELPERS
         + "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxUS_POC_NAME_NA', false) ? ok('contact_name_known') : miss('contact_name_known'); "
         + "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxUS_POC_ORG_NA_IND', false) ? ok('contact_org_known') : miss('contact_org_known'); "
+        + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlUS_POC_REL_TO_APP', {json.dumps(relationship)}) ? ok('contact_relationship') : miss('contact_relationship'); "
+        "return r; })()"
+    )
+    ensure_result = _runtime_eval(ws_url, ensure_expression)
+    ensure_payload = dict(ensure_result.get("value") or {})
+    time.sleep(1.5)
+    _wait_for_selector("us_contact", "#ctl00_SiteContentPlaceHolder_FormView1_tbxUS_POC_ADDR_LN1", timeout_s=8)
+    _wait_for_selector("us_contact", "#ctl00_SiteContentPlaceHolder_FormView1_tbxUS_POC_HOME_TEL", timeout_s=8)
+    _wait_for_selector("us_contact", "#ctl00_SiteContentPlaceHolder_FormView1_tbxUS_POC_EMAIL_ADDR", timeout_s=8)
+
+    ws_url = _find_page_ws_url("us_contact")
+    expression = (
+        "(() => { "
+        + _JS_HELPERS
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxUS_POC_SURNAME', {json.dumps(surname)}) ? ok('contact_surname') : miss('contact_surname'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxUS_POC_GIVEN_NAME', {json.dumps(given_names)}) ? ok('contact_given_names') : miss('contact_given_names'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxUS_POC_ORGANIZATION', {json.dumps(t.us_contact_organization or '')}) ? ok('contact_organization') : miss('contact_organization'); "
-        + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlUS_POC_REL_TO_APP', {json.dumps(relationship)}) ? ok('contact_relationship') : miss('contact_relationship'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxUS_POC_ADDR_LN1', {json.dumps(t.us_contact_address_line1 or '')}) ? ok('contact_addr1') : miss('contact_addr1'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxUS_POC_ADDR_LN2', {json.dumps('')}) ? ok('contact_addr2') : miss('contact_addr2'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxUS_POC_ADDR_CITY', {json.dumps(t.us_contact_city or '')}) ? ok('contact_city') : miss('contact_city'); "
@@ -493,6 +506,8 @@ def fill_us_contact_page(dossier: ApplicantDossier) -> VisibleControlResult:
     )
     result = _runtime_eval(ws_url, expression)
     payload = dict(result.get("value") or {})
+    payload["filled"] = list(ensure_payload.get("filled") or []) + list(payload.get("filled") or [])
+    payload["missing"] = list(ensure_payload.get("missing") or []) + list(payload.get("missing") or [])
     return VisibleControlResult(action="fill_us_contact_page", ok=not payload.get("missing"), payload=payload)
 
 
@@ -691,26 +706,56 @@ def fill_family_relatives_page(dossier: ApplicantDossier) -> VisibleControlResul
     mother_surname, mother_given = _split_name_first_surname(f.mother_full_name)
     father_dob = _family_relative_dob("father", dossier) or ""
     mother_dob = _family_relative_dob("mother", dossier) or ""
-    expression = (
-        "(() => { "
-        + _JS_HELPERS
+    father_surname_js = (
+        "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxFATHER_SURNAME_UNK_IND', false) ? ok('father_surname_known') : miss('father_surname_known'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxFATHER_SURNAME', {json.dumps(father_surname)}) ? ok('father_surname') : miss('father_surname'); "
+        if father_surname else
+        "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxFATHER_SURNAME_UNK_IND', true) ? ok('father_surname_unknown') : miss('father_surname_unknown'); "
+    )
+    father_given_js = (
+        "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxFATHER_GIVEN_NAME_UNK_IND', false) ? ok('father_given_known') : miss('father_given_known'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxFATHER_GIVEN_NAME', {json.dumps(father_given)}) ? ok('father_given') : miss('father_given'); "
-        + "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxFATHER_SURNAME_UNK_IND', false) ? ok('father_surname_known') : miss('father_surname_known'); "
-        + "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxFATHER_GIVEN_NAME_UNK_IND', false) ? ok('father_given_known') : miss('father_given_known'); "
-        + "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxFATHER_DOB_UNK_IND', false) ? ok('father_dob_known') : miss('father_dob_known'); "
+        if father_given else
+        "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxFATHER_GIVEN_NAME_UNK_IND', true) ? ok('father_given_unknown') : miss('father_given_unknown'); "
+    )
+    father_dob_js = (
+        "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxFATHER_DOB_UNK_IND', false) ? ok('father_dob_known') : miss('father_dob_known'); "
         + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlFathersDOBDay', {json.dumps(father_dob[8:10])}) ? ok('father_dob_day') : miss('father_dob_day'); "
         + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlFathersDOBMonth', {json.dumps(_month_abbrev(father_dob[5:7]))}) ? ok('father_dob_month') : miss('father_dob_month'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxFathersDOBYear', {json.dumps(father_dob[0:4])}) ? ok('father_dob_year') : miss('father_dob_year'); "
-        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblFATHER_LIVE_IN_US_IND', 'N') ? ok('father_in_us_no') : miss('father_in_us_no'); "
+        if father_dob else
+        "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxFATHER_DOB_UNK_IND', true) ? ok('father_dob_unknown') : miss('father_dob_unknown'); "
+    )
+    mother_surname_js = (
+        "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxMOTHER_SURNAME_UNK_IND', false) ? ok('mother_surname_known') : miss('mother_surname_known'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxMOTHER_SURNAME', {json.dumps(mother_surname)}) ? ok('mother_surname') : miss('mother_surname'); "
+        if mother_surname else
+        "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxMOTHER_SURNAME_UNK_IND', true) ? ok('mother_surname_unknown') : miss('mother_surname_unknown'); "
+    )
+    mother_given_js = (
+        "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxMOTHER_GIVEN_NAME_UNK_IND', false) ? ok('mother_given_known') : miss('mother_given_known'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxMOTHER_GIVEN_NAME', {json.dumps(mother_given)}) ? ok('mother_given') : miss('mother_given'); "
-        + "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxMOTHER_SURNAME_UNK_IND', false) ? ok('mother_surname_known') : miss('mother_surname_known'); "
-        + "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxMOTHER_GIVEN_NAME_UNK_IND', false) ? ok('mother_given_known') : miss('mother_given_known'); "
-        + "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxMOTHER_DOB_UNK_IND', false) ? ok('mother_dob_known') : miss('mother_dob_known'); "
+        if mother_given else
+        "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxMOTHER_GIVEN_NAME_UNK_IND', true) ? ok('mother_given_unknown') : miss('mother_given_unknown'); "
+    )
+    mother_dob_js = (
+        "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxMOTHER_DOB_UNK_IND', false) ? ok('mother_dob_known') : miss('mother_dob_known'); "
         + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlMothersDOBDay', {json.dumps(mother_dob[8:10])}) ? ok('mother_dob_day') : miss('mother_dob_day'); "
         + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlMothersDOBMonth', {json.dumps(_month_abbrev(mother_dob[5:7]))}) ? ok('mother_dob_month') : miss('mother_dob_month'); "
         + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxMothersDOBYear', {json.dumps(mother_dob[0:4])}) ? ok('mother_dob_year') : miss('mother_dob_year'); "
+        if mother_dob else
+        "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxMOTHER_DOB_UNK_IND', true) ? ok('mother_dob_unknown') : miss('mother_dob_unknown'); "
+    )
+    expression = (
+        "(() => { "
+        + _JS_HELPERS
+        + father_surname_js
+        + father_given_js
+        + father_dob_js
+        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblFATHER_LIVE_IN_US_IND', 'N') ? ok('father_in_us_no') : miss('father_in_us_no'); "
+        + mother_surname_js
+        + mother_given_js
+        + mother_dob_js
         + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblMOTHER_LIVE_IN_US_IND', 'N') ? ok('mother_in_us_no') : miss('mother_in_us_no'); "
         + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblUS_IMMED_RELATIVE_IND', 'N') ? ok('immediate_relatives_no') : miss('immediate_relatives_no'); "
         + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblUS_OTHER_RELATIVE_IND', 'N') ? ok('other_relatives_no') : miss('other_relatives_no'); "
@@ -841,13 +886,39 @@ def save_current_page() -> VisibleControlResult:
     )
 
 
+def extract_application_id() -> VisibleControlResult:
+    ws_url = find_target_websocket_url("ceac.state.gov/GenNIV/General/complete/")
+    expression = (
+        "(() => { "
+        "const text = document.body ? document.body.innerText : ''; "
+        "const direct = text.match(/Application ID(?:\\s+is)?\\s*:?\\s*(AA[0-9A-Z]{8,})/i); "
+        "const fallback = text.match(/\\b(AA[0-9A-Z]{8,})\\b/i); "
+        "const application_id = direct ? direct[1].toUpperCase() : (fallback ? fallback[1].toUpperCase() : null); "
+        "return {application_id, title: document.title, url: location.href}; "
+        "})()"
+    )
+    result = _runtime_eval(ws_url, expression)
+    payload = dict(result.get("value") or {})
+    return VisibleControlResult(
+        action="extract_application_id",
+        ok=bool(payload.get("application_id")),
+        payload=payload,
+    )
+
+
 def detect_current_page() -> VisibleControlResult:
     ws_url = find_target_websocket_url("ceac.state.gov/GenNIV/General/complete/")
     expression = (
-        "(() => ({"
+        "(() => {"
+        "const text = document.body ? document.body.innerText : '';"
+        "const direct = text.match(/Application ID(?:\\s+is)?\\s*:?\\s*(AA[0-9A-Z]{8,})/i);"
+        "const fallback = text.match(/\\b(AA[0-9A-Z]{8,})\\b/i);"
+        "return {"
         "title: document.title,"
-        "url: location.href"
-        "}))()"
+        "url: location.href,"
+        "application_id: direct ? direct[1].toUpperCase() : (fallback ? fallback[1].toUpperCase() : null)"
+        "};"
+        "})()"
     )
     result = _runtime_eval(ws_url, expression)
     payload = dict(result.get("value") or {})
@@ -872,10 +943,36 @@ def click_next_and_wait(port: int = 9222, timeout_s: float = 30.0) -> VisibleCon
 
     click_expression = (
         "(() => { "
-        "const btn = document.querySelector('#ctl00_SiteContentPlaceHolder_UpdateButton2'); "
-        "if (!btn) return {status: 'NEXT_BUTTON_NOT_FOUND'}; "
+        "const visible = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length); "
+        "const label = (el) => [el.value, el.innerText, el.textContent, el.getAttribute('aria-label'), el.title, el.id, el.name].filter(Boolean).join(' ').trim(); "
+        "const excluded = /\\b(save|back|previous|cancel|exit|sign\\s*out)\\b|continue\\s+application/i; "
+        "const isNext = (text) => /^\\s*next\\b/i.test(text) || /\\bnext\\s*:/i.test(text) || /下一步/.test(text); "
+        "const controls = [...document.querySelectorAll('input[type=\"submit\"], input[type=\"button\"], button, a')].filter(visible); "
+        "let btn = controls.find((el) => { const text = label(el); return isNext(text) && !excluded.test(text); }); "
+        "if (!btn) { "
+        "  const selectors = ["
+        "    '#ctl00_SiteContentPlaceHolder_UpdateButton3',"
+        "    '#ctl00_SiteContentPlaceHolder_NextButton',"
+        "    '#ctl00_SiteContentPlaceHolder_btnNext',"
+        "    'input[name=\"ctl00$SiteContentPlaceHolder$UpdateButton3\"]'"
+        "  ]; "
+        "  btn = selectors.map((sel) => document.querySelector(sel)).find((el) => el && visible(el)); "
+        "} "
+        "if (!btn) return {status: 'NEXT_BUTTON_NOT_FOUND', controls: controls.map(label).slice(0, 20)}; "
+        "const clicked = {id: btn.id || null, name: btn.name || null, label: label(btn)}; "
+        "const suppressBeforeUnload = (ev) => { "
+        "  try { ev.stopImmediatePropagation(); } catch (e) {} "
+        "  try { ev.preventDefault(); } catch (e) {} "
+        "  try { delete ev.returnValue; } catch (e) {} "
+        "  try { ev.returnValue = undefined; } catch (e) {} "
+        "}; "
+        "window.addEventListener('beforeunload', suppressBeforeUnload, true); "
+        "document.addEventListener('beforeunload', suppressBeforeUnload, true); "
+        "if (typeof needToConfirm !== 'undefined') needToConfirm = false; "
+        "if (document.body) document.body.onbeforeunload = null; "
+        "window.onbeforeunload = null; "
         "btn.click(); "
-        "return {status: 'NEXT_CLICKED'}; "
+        "return {status: 'NEXT_CLICKED', clicked, mode: 'click'}; "
         "})()"
     )
     click_result = _runtime_eval(ws_url, click_expression)
@@ -891,6 +988,7 @@ def click_next_and_wait(port: int = 9222, timeout_s: float = 30.0) -> VisibleCon
     while time.time() < deadline:
         try:
             new_ws_url = find_target_websocket_url("ceac.state.gov/GenNIV/General/complete/")
+            _accept_javascript_dialog(new_ws_url)
             probe = _runtime_eval(new_ws_url, probe_expression)
             new_url = dict(probe.get("value") or {}).get("url") or ""
             if new_url and new_url != before_url:
@@ -911,13 +1009,21 @@ def click_next_and_wait(port: int = 9222, timeout_s: float = 30.0) -> VisibleCon
                 )
         except RuntimeError:
             pass
-        time.sleep(1.0)
+        time.sleep(0.2)
 
     return VisibleControlResult(
         action="click_next_and_wait",
         ok=False,
         payload={"status": "TIMEOUT", "before_url": before_url},
     )
+
+
+def _accept_javascript_dialog(ws_url: str) -> None:
+    try:
+        with CDPWebSocket(ws_url) as client:
+            client.call("Page.handleJavaScriptDialog", {"accept": True})
+    except Exception:
+        pass
 
 
 def fill_and_continue(
@@ -937,6 +1043,7 @@ def fill_and_continue(
         "fill_payload": fill_result.payload if fill_result else {},
         "next_ok": next_result.ok,
         "new_page_key": next_result.payload.get("new_page_key"),
+        "application_id": detect_current_page().payload.get("application_id"),
     }
 
 

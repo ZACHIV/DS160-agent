@@ -26,6 +26,7 @@ from visa_agent.browser.cdp_client import find_target_websocket_url, list_debug_
 from visa_agent.browser.live_form_fill import (
     _PAGE_FILL_HANDLERS,
     detect_current_page,
+    extract_application_id,
     fill_and_continue,
     fill_current_supported_page,
     save_current_page,
@@ -153,6 +154,7 @@ class FillPageResponse(BaseModel):
     filled: list[str]
     missing: list[str]
     message: str
+    application_id: str | None = None
 
 
 class FillContinueResponse(BaseModel):
@@ -162,6 +164,7 @@ class FillContinueResponse(BaseModel):
     filled: list[str]
     missing: list[str]
     message: str
+    application_id: str | None = None
 
 
 class StatusResponse(BaseModel):
@@ -172,12 +175,14 @@ class StatusResponse(BaseModel):
     dossier_loaded: bool
     dossier_path: str
     dossier_document_loaded: bool
+    application_id: str | None = None
 
 
 class DetectPageResponse(BaseModel):
     page_key: str
     url: str
     title: str
+    application_id: str | None = None
 
 
 class DossierPreviewResponse(BaseModel):
@@ -315,6 +320,33 @@ def _has_ceac_tab(tabs: list[dict[str, Any]]) -> bool:
     return any("ceac.state.gov" in (t.get("url") or "") for t in tabs)
 
 
+def _current_application_id() -> str | None:
+    try:
+        result = extract_application_id()
+        if result.ok:
+            return str(result.payload.get("application_id") or "")
+    except Exception:
+        return None
+    return None
+
+
+def _save_detected_application_id(application_id: str | None, current_page_key: str | None = None) -> None:
+    if not application_id:
+        return
+    try:
+        dossier = _load_dossier()
+        existing = load_checkpoint(checkpoint_workspace())
+        cp = FillCheckpoint(
+            case_id=dossier.case_id,
+            application_id=application_id,
+            completed_pages=list(existing.completed_pages) if existing else [],
+            current_page_key=current_page_key or (existing.current_page_key if existing else None),
+        )
+        save_checkpoint(cp, checkpoint_workspace())
+    except Exception:
+        pass
+
+
 def _build_preview_payload(dossier) -> DossierPreviewResponse:
     mapped = map_dossier_to_ds160(dossier)
     execution_plan = build_execution_plan(mapped)
@@ -362,6 +394,8 @@ def get_status():
     """Check CDP connection and dossier availability."""
     tabs = _check_cdp()
     dossier_ok = Path(DOSSIER_PATH).exists()
+    application_id = _current_application_id() if _has_ceac_tab(tabs) else None
+    _save_detected_application_id(application_id)
     return StatusResponse(
         connected=len(tabs) > 0,
         cdp_port=CDP_PORT,
@@ -370,6 +404,7 @@ def get_status():
         dossier_loaded=dossier_ok,
         dossier_path=DOSSIER_PATH,
         dossier_document_loaded=ACTIVE_DOSSIER_DOCUMENT is not None,
+        application_id=application_id,
     )
 
 
@@ -381,10 +416,14 @@ def get_detect_page():
         raise HTTPException(status_code=503, detail="Chrome not reachable on CDP port")
     try:
         result = detect_current_page()
+        application_id = result.payload.get("application_id")
+        page_key = result.payload.get("page_key", "unsupported")
+        _save_detected_application_id(application_id, current_page_key=bundle_page_id(page_key) or page_key)
         return DetectPageResponse(
-            page_key=result.payload.get("page_key", "unsupported"),
+            page_key=page_key,
             url=result.payload.get("url", ""),
             title=result.payload.get("title", ""),
+            application_id=application_id,
         )
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc))
@@ -650,13 +689,17 @@ def post_fill_page(req: FillPageRequest):
 
         filled = result.payload.get("filled") or []
         missing = result.payload.get("missing") or []
-        log_page_fill(dossier.case_id, canonical or result.payload.get("page_key", "unknown"), len(filled), len(missing), ok=result.ok)
+        application_id = _current_application_id()
+        result_page_key = canonical or result.payload.get("page_key", "unsupported")
+        _save_detected_application_id(application_id, current_page_key=bundle_page_id(result_page_key) or result_page_key)
+        log_page_fill(dossier.case_id, result_page_key, len(filled), len(missing), application_id=application_id, ok=result.ok)
         return FillPageResponse(
             ok=result.ok,
-            page_key=canonical or result.payload.get("page_key", "unsupported"),
+            page_key=result_page_key,
             filled=filled,
             missing=missing,
             message=f"Filled {len(filled)} fields, {len(missing)} missing.",
+            application_id=application_id,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -689,6 +732,7 @@ def post_fill_and_continue(req: FillPageRequest):
         missing = list(fill_payload.get("missing") or [])
         raw_new_key = result.get("new_page_key")
         new_page_key = bundle_page_id(raw_new_key) if raw_new_key else None
+        application_id = result.get("application_id") or _current_application_id()
 
         # Auto-save checkpoint on success
         if result.get("fill_ok"):
@@ -699,7 +743,7 @@ def post_fill_and_continue(req: FillPageRequest):
                     completed.append(canonical)
                 cp = FillCheckpoint(
                     case_id=dossier.case_id,
-                    application_id=result.get("application_id"),
+                    application_id=application_id or (existing.application_id if existing else None),
                     completed_pages=completed,
                     current_page_key=new_page_key or raw_new_key,
                 )
@@ -708,7 +752,7 @@ def post_fill_and_continue(req: FillPageRequest):
                 pass  # checkpoint save is best-effort, don't fail the fill
 
         log_page_fill(dossier.case_id, canonical, len(filled), len(missing),
-                      application_id=result.get("application_id"),
+                      application_id=application_id,
                       ok=bool(result.get("fill_ok")))
 
         return FillContinueResponse(
@@ -718,6 +762,7 @@ def post_fill_and_continue(req: FillPageRequest):
             filled=filled,
             missing=missing,
             message=f"Filled {len(filled)} fields, {len(missing)} missing. Next page: {new_page_key or 'unknown'}",
+            application_id=application_id,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
