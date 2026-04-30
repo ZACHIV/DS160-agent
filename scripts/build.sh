@@ -15,10 +15,22 @@ fi
 
 PYTHON="$ROOT_DIR/.venv/bin/python"
 
+ensure_pip() {
+    if "$PYTHON" -m pip --version >/dev/null 2>&1; then
+        return 0
+    fi
+    echo "Bootstrapping pip in .venv..."
+    "$PYTHON" -m ensurepip --upgrade
+}
+
 # Install PyInstaller if needed
 if ! "$PYTHON" -c "import PyInstaller" 2>/dev/null; then
     echo "Installing PyInstaller..."
-    "$PYTHON" -m pip install pyinstaller -q
+    ensure_pip
+    if ! "$PYTHON" -m pip install pyinstaller -q; then
+        echo "Default pip index failed; retrying with https://pypi.org/simple ..."
+        "$PYTHON" -m pip install pyinstaller -q --index-url https://pypi.org/simple
+    fi
 fi
 
 MODE="${1:-onedir}"  # onedir or onefile
@@ -84,7 +96,15 @@ else
 fi
 echo ""
 echo "Run with:"
-echo "  $DIST_DIR/ds160-assistant/ds160-assistant"
+if [[ "$MODE" == "onefile" ]]; then
+    echo "  $DIST_DIR/ds160-assistant"
+else
+    echo "  $DIST_DIR/ds160-assistant/ds160-assistant"
+fi
 echo ""
 echo "To open on macOS:"
-echo "  open $DIST_DIR/ds160-assistant/"
+if [[ "$MODE" == "onefile" ]]; then
+    echo "  open $DIST_DIR"
+else
+    echo "  open $DIST_DIR/ds160-assistant/"
+fi
