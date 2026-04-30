@@ -6,12 +6,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from visa_agent._paths import docs_dir
 from visa_agent.schema import ApplicantDossier, load_dossier_payload
 
 
 def _schema_path() -> Path:
-    return docs_dir() / "dossier.schema.json"
+    return Path(__file__).with_name("dossier.schema.json")
 
 
 @lru_cache(maxsize=1)

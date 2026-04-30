@@ -1,2 +1,3 @@
-"""China DS-160 assistant prototype."""
+"""China DS-160 assistant."""
 
+__version__ = "0.1.0"

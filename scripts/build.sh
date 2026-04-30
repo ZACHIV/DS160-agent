@@ -36,7 +36,7 @@ rm -rf "$BUILD_DIR" "$DIST_DIR"
     --noconfirm \
     --paths "$ROOT_DIR/src" \
     --add-data "$ROOT_DIR/app:app" \
-    --add-data "$ROOT_DIR/docs:docs" \
+    --add-data "$ROOT_DIR/src/visa_agent/dossier.schema.json:visa_agent" \
     --add-data "$ROOT_DIR/sample_data:sample_data" \
     --hidden-import visa_agent.server \
     --hidden-import visa_agent.schema \
