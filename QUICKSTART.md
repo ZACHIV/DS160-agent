@@ -24,7 +24,7 @@ China B1/B2 签证 DS-160 表格一键填写工具。
 
 ```bash
 git clone <repo>
-cd amercican_visa
+cd DS160-agent
 
 # 安装依赖 + 构建
 bash scripts/install-deps.sh
