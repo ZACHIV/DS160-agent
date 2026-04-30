@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from urllib.parse import parse_qs, unquote, urlparse
 
 from visa_agent.browser.cdp_client import CDPWebSocket, find_target_websocket_url, list_debug_targets
 from visa_agent.browser.visible_control import VisibleControlResult, _runtime_eval
@@ -48,6 +49,42 @@ PAGE_MATCHERS = {
 ALL_PAGE_SUBSTRINGS = {
     key: matchers[0] for key, matchers in PAGE_MATCHERS.items()
 }
+
+
+def _url_node_value(url: str) -> str | None:
+    parsed = urlparse(url)
+    node = parse_qs(parsed.query).get("node", [None])[0]
+    if node:
+        return unquote(node)
+    marker = "node="
+    if marker not in url:
+        return None
+    tail = url.split(marker, 1)[1]
+    return unquote(tail.split("&", 1)[0].split("#", 1)[0])
+
+
+def _matches_page(page_key: str, url: str, title: str) -> bool:
+    node = _url_node_value(url)
+    node_matchers = [matcher.split("=", 1)[1] for matcher in PAGE_MATCHERS[page_key] if matcher.startswith("node=")]
+    if node is not None and node_matchers:
+        return node in node_matchers
+
+    for matcher in PAGE_MATCHERS[page_key]:
+        if matcher.startswith("node="):
+            if matcher in url:
+                return True
+            continue
+        if matcher in title or matcher in url:
+            return True
+    return False
+
+
+def _detect_page_key(url: str, title: str) -> str:
+    for key in PAGE_MATCHERS:
+        if _matches_page(key, url, title):
+            return key
+    return "unsupported"
+
 
 # JS helper functions injected at the start of every fill expression
 _JS_HELPERS = (
@@ -325,7 +362,7 @@ def fill_travel_companions_page(_dossier: ApplicantDossier) -> VisibleControlRes
     expression = (
         "(() => { "
         + _JS_HELPERS
-        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblOtherPersonsTravelingWithYou', 'N') ? ok('no_companions') : miss('no_companions'); "
+        + "setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblOtherPersonsTravelingWithYou', 'N') ? ok('no_companions') : miss('no_companions'); "
         "return r; })()"
     )
     result = _runtime_eval(ws_url, expression)
@@ -335,80 +372,74 @@ def fill_travel_companions_page(_dossier: ApplicantDossier) -> VisibleControlRes
 
 def fill_previous_travel_page(dossier: ApplicantDossier) -> VisibleControlResult:
     ws_url = _find_page_ws_url("previous_travel")
-
-    # Compute previous visit date (6 months before intended arrival)
-    prev_visit_date = ""
-    try:
-        if dossier.travel_plan.intended_arrival_date:
-            from datetime import date, timedelta
-            arr_date = date.fromisoformat(dossier.travel_plan.intended_arrival_date)
-            prev_date = arr_date - timedelta(days=180)  # 6 months ago
-            prev_visit_date = prev_date.strftime("%Y-%m-%d")
-    except Exception:
-        pass
-
-    # Read current radio states and fill accordingly
-    # Since we don't know user's actual history, default to All Yes with placeholder data
-    los = dossier.travel_plan.intended_length_of_stay_value or "14"
-    los_unit = _previous_travel_los_unit(dossier.travel_plan.intended_length_of_stay_unit)
+    previous = dossier.previous_travel
+    has_previous_us_travel = bool(previous and previous.has_previous_us_travel)
+    has_previous_us_visa = bool(previous and previous.has_previous_us_visa)
+    prev_visit_date = previous.last_arrival_date if previous and previous.last_arrival_date else ""
+    prev_visa_date = previous.previous_visa_issue_date if previous and previous.previous_visa_issue_date else ""
+    los = previous.last_length_of_stay_value if previous and previous.last_length_of_stay_value else ""
+    los_unit = _previous_travel_los_unit(previous.last_length_of_stay_unit if previous else None)
 
     ensure_prev_travel_expression = (
         "(() => { "
         + _JS_HELPERS
-        + "setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_TRAVEL_IND', 'Y') ? ok('prev_us_travel_yes') : miss('prev_us_travel_yes'); "
+        + f"setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_TRAVEL_IND', {json.dumps('Y' if has_previous_us_travel else 'N')}) ? ok({json.dumps('prev_us_travel_yes' if has_previous_us_travel else 'prev_us_travel_no')}) : miss('prev_us_travel'); "
         "return r; })()"
     )
     ensure_prev_travel_result = _runtime_eval(ws_url, ensure_prev_travel_expression)
     ensure_prev_travel_payload = dict(ensure_prev_travel_result.get("value") or {})
-    time.sleep(1)
-    _wait_for_selector("previous_travel", "#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_DTEDay", timeout_s=5)
+    if has_previous_us_travel:
+        time.sleep(1)
+        _wait_for_selector("previous_travel", "#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_DTEDay", timeout_s=5)
 
     ws_url = _find_page_ws_url("previous_travel")
     ensure_prev_visa_expression = (
         "(() => { "
         + _JS_HELPERS
-        + "setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_IND', 'Y') ? ok('prev_visa_yes') : miss('prev_visa_yes'); "
+        + f"setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_IND', {json.dumps('Y' if has_previous_us_visa else 'N')}) ? ok({json.dumps('prev_visa_yes' if has_previous_us_visa else 'prev_visa_no')}) : miss('prev_visa'); "
         "return r; })()"
     )
     ensure_prev_visa_result = _runtime_eval(ws_url, ensure_prev_visa_expression)
     ensure_prev_visa_payload = dict(ensure_prev_visa_result.get("value") or {})
-    time.sleep(1)
-    _wait_for_selector("previous_travel", "#ctl00_SiteContentPlaceHolder_FormView1_ddlPREV_VISA_ISSUED_DTEDay", timeout_s=5)
+    if has_previous_us_visa:
+        time.sleep(1)
+        _wait_for_selector("previous_travel", "#ctl00_SiteContentPlaceHolder_FormView1_ddlPREV_VISA_ISSUED_DTEDay", timeout_s=5)
 
     ws_url = _find_page_ws_url("previous_travel")
     expression = (
         "(() => { "
         + _JS_HELPERS
-        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_REFUSED_IND', 'N') ? ok('prev_visa_refused_no') : miss('prev_visa_refused_no'); "
-        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblIV_PETITION_IND', 'N') ? ok('iv_petition_no') : miss('iv_petition_no'); "
+        + f"setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_REFUSED_IND', {json.dumps('Y' if previous and previous.visa_ever_refused else 'N')}) ? ok({json.dumps('prev_visa_refused_yes' if previous and previous.visa_ever_refused else 'prev_visa_refused_no')}) : miss('prev_visa_refused'); "
+        + f"setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblIV_PETITION_IND', {json.dumps('Y' if previous and previous.has_immigrant_petition else 'N')}) ? ok({json.dumps('iv_petition_yes' if previous and previous.has_immigrant_petition else 'iv_petition_no')}) : miss('iv_petition'); "
         # Previous US Travel details
         + (
             f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_DTEDay', {json.dumps(prev_visit_date[8:10].lstrip('0') or prev_visit_date[8:10])}) ? ok('prev_visit_day') : miss('prev_visit_day'); "
             f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_DTEMonth', {json.dumps(_month_abbrev(prev_visit_date[5:7]))}) ? ok('prev_visit_month') : miss('prev_visit_month'); "
             f"setText('#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_tbxPREV_US_VISIT_DTEYear', {json.dumps(prev_visit_date[0:4])}) ? ok('prev_visit_year') : miss('prev_visit_year'); "
-            if prev_visit_date else "miss('prev_visit_day'); miss('prev_visit_month'); miss('prev_visit_year'); "
+            if has_previous_us_travel and prev_visit_date else ("miss('prev_visit_day'); miss('prev_visit_month'); miss('prev_visit_year'); " if has_previous_us_travel else "")
         )
-        + f"setText('#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_tbxPREV_US_VISIT_LOS', {json.dumps(los)}) ? ok('prev_los_value') : miss('prev_los_value'); "
-        + f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_LOS_CD', {json.dumps(los_unit)}) ? ok('prev_los_unit') : miss('prev_los_unit'); "
-        # No US driver license
-        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_DRIVER_LIC_IND', 'N') ? ok('driver_lic_no') : miss('driver_lic_no'); "
+        + (
+            f"setText('#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_tbxPREV_US_VISIT_LOS', {json.dumps(los)}) ? ok('prev_los_value') : miss('prev_los_value'); "
+            f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_LOS_CD', {json.dumps(los_unit)}) ? ok('prev_los_unit') : miss('prev_los_unit'); "
+            f"setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_DRIVER_LIC_IND', {json.dumps('Y' if previous and previous.has_us_driver_license else 'N')}) ? ok({json.dumps('driver_lic_yes' if previous and previous.has_us_driver_license else 'driver_lic_no')}) : miss('driver_lic'); "
+            if has_previous_us_travel else ""
+        )
         # Previous visa details
         + (
-            f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlPREV_VISA_ISSUED_DTEDay', {json.dumps(prev_visit_date[8:10].lstrip('0') or prev_visit_date[8:10])}) ? ok('prev_visa_day') : miss('prev_visa_day'); "
-            f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlPREV_VISA_ISSUED_DTEMonth', {json.dumps(_month_abbrev(prev_visit_date[5:7]))}) ? ok('prev_visa_month') : miss('prev_visa_month'); "
-            f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxPREV_VISA_ISSUED_DTEYear', {json.dumps(prev_visit_date[0:4])}) ? ok('prev_visa_year') : miss('prev_visa_year'); "
-            if prev_visit_date else "miss('prev_visa_day'); miss('prev_visa_month'); miss('prev_visa_year'); "
+            f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlPREV_VISA_ISSUED_DTEDay', {json.dumps(prev_visa_date[8:10].lstrip('0') or prev_visa_date[8:10])}) ? ok('prev_visa_day') : miss('prev_visa_day'); "
+            f"setSelectText('#ctl00_SiteContentPlaceHolder_FormView1_ddlPREV_VISA_ISSUED_DTEMonth', {json.dumps(_month_abbrev(prev_visa_date[5:7]))}) ? ok('prev_visa_month') : miss('prev_visa_month'); "
+            f"setText('#ctl00_SiteContentPlaceHolder_FormView1_tbxPREV_VISA_ISSUED_DTEYear', {json.dumps(prev_visa_date[0:4])}) ? ok('prev_visa_year') : miss('prev_visa_year'); "
+            if has_previous_us_visa and prev_visa_date else ("miss('prev_visa_day'); miss('prev_visa_month'); miss('prev_visa_year'); " if has_previous_us_visa else "")
         )
-        # FOIL number NA
-        + "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxPREV_VISA_FOIL_NUMBER_NA', true) ? ok('foil_na') : miss('foil_na'); "
-        # Same visa type (B1/B2 was for same purpose)
-        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_SAME_TYPE_IND', 'Y') ? ok('same_type_yes') : miss('same_type_yes'); "
-        # Same country (US)
-        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_SAME_CNTRY_IND', 'Y') ? ok('same_country_yes') : miss('same_country_yes'); "
-        # No ten print, lost, or cancelled
-        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_TEN_PRINT_IND', 'N') ? ok('ten_print_no') : miss('ten_print_no'); "
-        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_LOST_IND', 'N') ? ok('visa_lost_no') : miss('visa_lost_no'); "
-        + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_CANCELLED_IND', 'N') ? ok('visa_cancelled_no') : miss('visa_cancelled_no'); "
+        + (
+            "setCb('#ctl00_SiteContentPlaceHolder_FormView1_cbxPREV_VISA_FOIL_NUMBER_NA', true) ? ok('foil_na') : miss('foil_na'); "
+            + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_SAME_TYPE_IND', 'Y') ? ok('same_type_yes') : miss('same_type_yes'); "
+            + "setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_SAME_CNTRY_IND', 'Y') ? ok('same_country_yes') : miss('same_country_yes'); "
+            + f"setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_TEN_PRINT_IND', {json.dumps('Y' if previous and previous.ten_print_collected else 'N')}) ? ok({json.dumps('ten_print_yes' if previous and previous.ten_print_collected else 'ten_print_no')}) : miss('ten_print'); "
+            + f"setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_LOST_IND', {json.dumps('Y' if previous and previous.visa_ever_lost else 'N')}) ? ok({json.dumps('visa_lost_yes' if previous and previous.visa_ever_lost else 'visa_lost_no')}) : miss('visa_lost'); "
+            + f"setRadio('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_CANCELLED_IND', {json.dumps('Y' if previous and previous.visa_ever_cancelled else 'N')}) ? ok({json.dumps('visa_cancelled_yes' if previous and previous.visa_ever_cancelled else 'visa_cancelled_no')}) : miss('visa_cancelled'); "
+            if has_previous_us_visa else ""
+        )
         + "return r; })()"
     )
     result = _runtime_eval(ws_url, expression)
@@ -924,12 +955,7 @@ def detect_current_page() -> VisibleControlResult:
     payload = dict(result.get("value") or {})
     url = payload.get("url") or ""
     title = payload.get("title") or ""
-    page_key = "unsupported"
-    for key, matchers in PAGE_MATCHERS.items():
-        if any(matcher in url or matcher in title for matcher in matchers):
-            page_key = key
-            break
-    payload["page_key"] = page_key
+    payload["page_key"] = _detect_page_key(url, title)
     return VisibleControlResult(action="detect_current_page", ok=True, payload=payload)
 
 
@@ -992,12 +1018,8 @@ def click_next_and_wait(port: int = 9222, timeout_s: float = 30.0) -> VisibleCon
             probe = _runtime_eval(new_ws_url, probe_expression)
             new_url = dict(probe.get("value") or {}).get("url") or ""
             if new_url and new_url != before_url:
-                new_page_key = "unsupported"
                 title = dict(probe.get("value") or {}).get("title") or ""
-                for key, matchers in PAGE_MATCHERS.items():
-                    if any(matcher in new_url or matcher in title for matcher in matchers):
-                        new_page_key = key
-                        break
+                new_page_key = _detect_page_key(new_url, title)
                 return VisibleControlResult(
                     action="click_next_and_wait",
                     ok=True,
@@ -1128,21 +1150,15 @@ def _travel_other_purpose_value(visa_class: str | None) -> str:
 
 
 def _find_page_ws_url(page_key: str) -> str:
-    matchers = PAGE_MATCHERS[page_key]
-    for matcher in matchers:
-        try:
-            return find_target_websocket_url(matcher)
-        except RuntimeError:
-            continue
     targets = list_debug_targets()
     for target in targets:
         url = target.get("url") or ""
         title = target.get("title") or ""
-        if any(matcher in url or matcher in title for matcher in matchers):
+        if _matches_page(page_key, url, title):
             ws_url = target.get("webSocketDebuggerUrl")
             if ws_url:
                 return str(ws_url)
-    raise RuntimeError(f"No target found for page {page_key!r} using matchers {matchers!r}")
+    raise RuntimeError(f"No target found for page {page_key!r} using matchers {PAGE_MATCHERS[page_key]!r}")
 
 
 def _wait_for_selector(page_key: str, selector: str, timeout_s: float = 5.0, interval_s: float = 0.5) -> bool:

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from visa_agent.schema import load_dossier
+from visa_agent.schema import PreviousTravelInfo, load_dossier
 from visa_agent.browser.live_form_fill import (
     PAGE_MATCHERS,
     PREVIOUS_TRAVEL_URL_SUBSTRING,
     _address_phone_defaults,
+    _detect_page_key,
     _fill_security_questions,
     _family_relative_dob,
     _family_spouse_defaults,
@@ -30,6 +32,7 @@ from visa_agent.browser.live_form_fill import (
     fill_personal1_page,
     fill_personal2_page,
     fill_previous_travel_page,
+    fill_travel_companions_page,
     fill_travel_page,
     fill_family_relatives_page,
     fill_us_contact_page,
@@ -47,6 +50,48 @@ class LiveFormFillTests(unittest.TestCase):
 
     def test_previous_travel_url_matches_ceac_target(self) -> None:
         self.assertEqual(PREVIOUS_TRAVEL_URL_SUBSTRING, "node=PreviousUSTravel")
+
+    def test_travel_companions_url_does_not_match_travel_page(self) -> None:
+        url = "https://ceac.state.gov/GenNIV/General/complete/complete_travel.aspx?node=TravelCompanions"
+        self.assertEqual(_detect_page_key(url, "Travel Companions Information"), "travel_companions")
+
+    def test_previous_travel_url_does_not_match_travel_page_title(self) -> None:
+        url = "https://ceac.state.gov/GenNIV/General/complete/complete_travel.aspx?node=PreviousUSTravel"
+        self.assertEqual(_detect_page_key(url, "Previous U.S. Travel Information"), "previous_travel")
+
+    def test_find_page_ws_url_uses_exact_node_match(self) -> None:
+        targets = [
+            {
+                "url": "https://ceac.state.gov/GenNIV/General/complete/complete_travel.aspx?node=TravelCompanions",
+                "title": "Travel Companions Information",
+                "webSocketDebuggerUrl": "ws://companions",
+            },
+            {
+                "url": "https://ceac.state.gov/GenNIV/General/complete/complete_travel.aspx?node=Travel",
+                "title": "Travel Information",
+                "webSocketDebuggerUrl": "ws://travel",
+            },
+            {
+                "url": "https://ceac.state.gov/GenNIV/General/complete/complete_travel.aspx?node=PreviousUSTravel",
+                "title": "Previous U.S. Travel Information",
+                "webSocketDebuggerUrl": "ws://previous",
+            },
+        ]
+        with patch("visa_agent.browser.live_form_fill.list_debug_targets", return_value=targets):
+            self.assertEqual(_find_page_ws_url("travel"), "ws://travel")
+            self.assertEqual(_find_page_ws_url("travel_companions"), "ws://companions")
+            self.assertEqual(_find_page_ws_url("previous_travel"), "ws://previous")
+
+    def test_travel_companions_fill_uses_real_click(self) -> None:
+        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
+            "visa_agent.browser.live_form_fill._runtime_eval",
+            return_value={"value": {"filled": ["no_companions"], "missing": []}},
+        ) as runtime_eval:
+            result = fill_travel_companions_page(None)
+
+        self.assertTrue(result.ok)
+        expression = runtime_eval.call_args.args[1]
+        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblOtherPersonsTravelingWithYou', 'N')", expression)
 
     def test_passport_page_matchers_include_pptvisa_alias(self) -> None:
         self.assertIn("node=PptVisa", PAGE_MATCHERS["passport"])
@@ -255,8 +300,45 @@ class LiveFormFillTests(unittest.TestCase):
         self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_dlPrincipalAppTravel_ctl00_ddlPurposeOfTrip", second_expression)
         self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_dlPrincipalAppTravel_ctl00_ddlOtherPurpose", third_expression)
 
-    def test_previous_travel_fill_uses_staged_expansion(self) -> None:
+    def test_previous_travel_fill_respects_no_answers_without_expansion(self) -> None:
         dossier = load_dossier(SAMPLE_PATH)
+        responses = [
+            {"value": {"filled": ["prev_us_travel_no"], "missing": []}},
+            {"value": {"filled": ["prev_visa_no"], "missing": []}},
+            {"value": {"filled": ["prev_visa_refused_no", "iv_petition_no"], "missing": []}},
+        ]
+        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
+            "visa_agent.browser.live_form_fill._runtime_eval",
+            side_effect=responses,
+        ) as runtime_eval, patch(
+            "visa_agent.browser.live_form_fill._wait_for_selector",
+            return_value=True,
+        ) as wait_for_selector, patch("visa_agent.browser.live_form_fill.time.sleep"):
+            result = fill_previous_travel_page(dossier)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(runtime_eval.call_count, 3)
+        self.assertEqual(wait_for_selector.call_count, 0)
+        first_expression = runtime_eval.call_args_list[0].args[1]
+        second_expression = runtime_eval.call_args_list[1].args[1]
+        third_expression = runtime_eval.call_args_list[2].args[1]
+        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_TRAVEL_IND', \"N\")", first_expression)
+        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_IND', \"N\")", second_expression)
+        self.assertIn("rblPREV_VISA_REFUSED_IND', \"N\")", third_expression)
+        self.assertNotIn("dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_DTEDay", third_expression)
+
+    def test_previous_travel_fill_expands_when_dossier_has_prior_travel(self) -> None:
+        dossier = replace(
+            load_dossier(SAMPLE_PATH),
+            previous_travel=PreviousTravelInfo(
+                has_previous_us_travel=True,
+                last_arrival_date="2024-05-12",
+                last_length_of_stay_value="10",
+                last_length_of_stay_unit="DAYS",
+                has_previous_us_visa=True,
+                previous_visa_issue_date="2023-04-08",
+            ),
+        )
         responses = [
             {"value": {"filled": ["prev_us_travel_yes"], "missing": []}},
             {"value": {"filled": ["prev_visa_yes"], "missing": []}},
@@ -277,9 +359,10 @@ class LiveFormFillTests(unittest.TestCase):
         first_expression = runtime_eval.call_args_list[0].args[1]
         second_expression = runtime_eval.call_args_list[1].args[1]
         third_expression = runtime_eval.call_args_list[2].args[1]
-        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_TRAVEL_IND', 'Y')", first_expression)
-        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_IND', 'Y')", second_expression)
+        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_TRAVEL_IND', \"Y\")", first_expression)
+        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_IND', \"Y\")", second_expression)
         self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_DTEDay", third_expression)
+        self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_ddlPREV_VISA_ISSUED_DTEDay", third_expression)
 
     def test_us_contact_fill_waits_for_address_fields_after_setup(self) -> None:
         dossier = load_dossier(SAMPLE_PATH)
