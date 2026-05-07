@@ -83,57 +83,30 @@ if APP_DIR.is_dir():
 
 @app.get("/", response_class=HTMLResponse)
 def get_landing():
-    """Unified landing page linking intake and assistant."""
-    if (APP_DIR / "index.html").is_file():
-        return HTMLResponse((APP_DIR / "index.html").read_text(encoding="utf-8"))
-    # Fallback inline landing page
-    return HTMLResponse("""<!doctype html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>DS-160 签证助手</title>
-<style>
-:root{--bg:#0a0a0f;--surface:#141420;--text:#e0e0e0;--accent:#6fcf97;--accent2:#5b9bd5}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;align-items:center;justify-content:center;min-height:100vh}
-header{position:fixed;top:0;left:0;right:0;padding:1.5rem 2rem;border-bottom:1px solid #222;display:flex;align-items:center;gap:1rem}
-header h1{font-size:1.1rem;font-weight:600}
-header span.ver{color:#555;font-size:.8rem}
-main{display:flex;gap:2rem;max-width:800px;padding:2rem;margin-top:2rem}
-.card{background:var(--surface);border-radius:12px;padding:2.5rem 2rem;text-align:center;flex:1;border:1px solid #222;transition:border-color .2s}
-.card:hover{border-color:var(--accent)}
-.card .step{display:inline-block;background:#1a1a2e;color:var(--accent2);font-size:.75rem;padding:.25rem .75rem;border-radius:99px;margin-bottom:1rem;font-weight:600}
-.card h2{font-size:1.25rem;margin-bottom:.75rem}
-.card p{color:#888;margin-bottom:2rem;font-size:.9rem;line-height:1.6}
-.card a{display:inline-block;padding:.7rem 2rem;border-radius:6px;text-decoration:none;font-weight:600;font-size:.9rem}
-.card a.primary{background:var(--accent);color:#000}
-.card a.secondary{background:var(--accent2);color:#fff}
-.features{position:fixed;bottom:1.5rem;left:0;right:0;text-align:center;color:#444;font-size:.75rem}
-.features span{margin:0 .75rem}
-</style>
-</head>
-<body>
-<header><h1>DS-160 签证助手</h1><span class="ver">China B1/B2</span></header>
-<main>
-<div class="card"><span class="step">第 1 步</span><h2>采集申请资料</h2><p>手动填写申请人护照信息、旅行计划、工作教育、家庭背景，生成统一申请资料文件。</p><a class="secondary" href="/intake">填写资料</a></div>
-<div class="card"><span class="step">第 2 步</span><h2>自动填入表单</h2><p>导入资料文件，通过浏览器自动填写 DS-160 表格。支持逐页填写、一键翻页、全部自动执行。</p><a class="primary" href="/assistant">开始填写</a></div>
-</main>
-<footer class="features"><span>加密存储</span><span>断点续填</span><span>18 页支持</span><span>DOM 检测</span></footer>
-</body>
-</html>""")
+    """Unified single-page app combining intake and assistant."""
+    opendesign = APP_DIR / "ds160-assistant-opendesign.html"
+    if opendesign.is_file():
+        return HTMLResponse(opendesign.read_text(encoding="utf-8"))
+    # Fallback
+    return HTMLResponse("""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"/><title>DS-160 助手</title></head><body><h1>DS-160 助手不可用</h1></body></html>""")
 
 
 @app.get("/intake", response_class=HTMLResponse)
 def get_intake():
-    """Serve the DS-160 intake page."""
+    """Serve the unified DS-160 app (intake screen active by default)."""
+    opendesign = APP_DIR / "ds160-assistant-opendesign.html"
+    if opendesign.is_file():
+        return HTMLResponse(opendesign.read_text(encoding="utf-8"))
     html = (APP_DIR / "intake.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
 
 
 @app.get("/assistant", response_class=HTMLResponse)
 def get_assistant():
-    """Serve the DS-160 fill assistant page."""
+    """Serve the unified DS-160 app (assistant screen active by default)."""
+    opendesign = APP_DIR / "ds160-assistant-opendesign.html"
+    if opendesign.is_file():
+        return HTMLResponse(opendesign.read_text(encoding="utf-8"))
     html = (APP_DIR / "ds160-assistant.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
 
@@ -375,6 +348,12 @@ def _coerce_active_document(payload: dict[str, Any]) -> tuple[dict[str, Any], st
     return dossier_payload, dossier.case_id
 
 
+def _request_payload(req: Any) -> dict[str, Any]:
+    if isinstance(req, dict):
+        return dict(req)
+    return dict(req.model_dump())
+
+
 # Map from page_id (as used in the frontend bundle) to fill function
 _PAGE_FILL_MAP = {
     "personal_page_1": "personal1",
@@ -433,7 +412,7 @@ def get_detect_page():
 def post_dossier_preview(req: DossierPreviewRequest):
     """Validate a full dossier payload and return preview status."""
     try:
-        payload = validate_dossier_payload(dict(req.model_dump()))
+        payload = validate_dossier_payload(_request_payload(req))
         dossier = load_dossier_payload(payload)
         return _build_preview_payload(dossier)
     except Exception as exc:
@@ -450,7 +429,7 @@ def get_dossier_schema():
 def post_dossier_document(req: DossierPreviewRequest):
     """Set the active dossier document used by the fill assistant."""
     global ACTIVE_DOSSIER_DOCUMENT
-    payload = dict(req.model_dump())
+    payload = _request_payload(req)
     ACTIVE_DOSSIER_DOCUMENT, case_id = _coerce_active_document(payload)
     log_dossier_import(case_id)
     return DossierDocumentResponse(

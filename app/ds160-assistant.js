@@ -56,6 +56,68 @@ const intakePassphrase = document.getElementById("intake-passphrase");
 const intakePassphraseField = document.getElementById("encrypt-passphrase-field");
 const loadIntakeButton = document.getElementById("load-intake");
 const intakeDocStatus = document.getElementById("intake-doc-status");
+const pageFieldsBody = document.getElementById("page-fields-body");
+const syncPageButton = document.getElementById("sync-page");
+const clearCheckpointButton = document.getElementById("clear-checkpoint");
+const checkDriftButton = document.getElementById("check-drift");
+const isOpenDesign = Boolean(pageFieldsBody);
+
+
+function setText(element, value) {
+  if (element) {
+    element.textContent = value;
+  }
+}
+
+
+function setDisplay(element, value) {
+  if (element) {
+    element.style.display = value;
+  }
+}
+
+
+function setDisabled(element, disabled) {
+  if (element) {
+    element.disabled = disabled;
+  }
+}
+
+
+function setButtonText(element, value) {
+  if (element) {
+    element.textContent = value;
+  }
+}
+
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+
+function pillClass(status) {
+  if (status === "ready" || status === "success") return "pill-success";
+  if (status === "blocked" || status === "error") return "pill-danger";
+  if (status === "needs_review" || status === "warn") return "pill-warn";
+  return "pill-neutral";
+}
+
+
+function statusLabel(status) {
+  if (status === "ready") return "就绪";
+  if (status === "needs_review") return "待确认";
+  if (status === "blocked") return "缺失";
+  if (status === "success") return "成功";
+  if (status === "error") return "失败";
+  if (status === "warn") return "提醒";
+  return "记录";
+}
 
 
 function currentBundle() {
@@ -84,9 +146,7 @@ function setApplicationId(applicationId) {
   if (!applicationId) return;
   state.applicationId = applicationId;
   localStorage.setItem("ds160_application_id", applicationId);
-  if (applicationIdEl) {
-    applicationIdEl.textContent = applicationId;
-  }
+  setText(applicationIdEl, applicationId);
 }
 
 
@@ -122,16 +182,34 @@ async function syncCurrentBrowserPage(options = {}) {
 
 
 function renderLogs() {
+  if (!fillResult) return;
+  if (isOpenDesign) {
+    fillResult.innerHTML = state.logs.length
+      ? state.logs
+          .map(
+            (item) => `
+              <tr>
+                <td class="time">${escapeHtml(item.timestamp)}</td>
+                <td>${escapeHtml(item.title)}</td>
+                <td>${escapeHtml(state.currentPageId || "--")}</td>
+                <td><span class="pill ${pillClass(item.level)}">${escapeHtml(statusLabel(item.level))}</span><div class="terminal-detail">${escapeHtml(item.detail || "无附加信息")}</div></td>
+              </tr>
+            `
+          )
+          .join("")
+      : `<tr><td class="time">--:--:--</td><td>空</td><td>--</td><td><span class="pill pill-neutral">等待</span></td></tr>`;
+    return;
+  }
   fillResult.innerHTML = state.logs.length
     ? state.logs
         .map(
           (item) => `
             <article class="terminal-line ${item.level}">
               <header>
-                <strong>${item.title}</strong>
-                <span>${item.timestamp}</span>
+                <strong>${escapeHtml(item.title)}</strong>
+                <span>${escapeHtml(item.timestamp)}</span>
               </header>
-              <div class="terminal-detail">${item.detail || "无附加信息"}</div>
+              <div class="terminal-detail">${escapeHtml(item.detail || "无附加信息")}</div>
             </article>
           `
         )
@@ -141,25 +219,26 @@ function renderLogs() {
 
 
 function renderEmptyState() {
-  summary.innerHTML = `
+  if (summary) summary.innerHTML = `
     <div class="summary-card">
       <span class="eyebrow">状态</span>
       <strong>未导入</strong>
     </div>
   `;
-  pageNav.innerHTML = `
+  if (pageNav) pageNav.innerHTML = `
     <section class="flow-section">
       <div class="flow-section-title">页面</div>
       <div class="summary-card">--</div>
     </section>
   `;
-  pageTitle.textContent = "--";
-  metricFill.textContent = "0";
-  metricReview.textContent = "0";
-  metricBlocked.textContent = "0";
-  if (applicationIdEl) {
-    applicationIdEl.textContent = state.applicationId || "--";
+  if (pageFieldsBody) {
+    pageFieldsBody.innerHTML = `<tr><td>--</td><td>--</td><td><span class="pill pill-neutral">未导入</span></td></tr>`;
   }
+  setText(pageTitle, "--");
+  setText(metricFill, "0");
+  setText(metricReview, "0");
+  setText(metricBlocked, "0");
+  setText(applicationIdEl, state.applicationId || "--");
   renderLogs();
 }
 
@@ -167,6 +246,7 @@ function renderEmptyState() {
 function renderSummary() {
   const bundle = currentBundle();
   const { status_counts: counts, page_count: pages, hard_stops: hardStops } = bundle.summary;
+  if (!summary) return;
   summary.innerHTML = `
     <div class="summary-card">
       <span class="eyebrow">申请</span>
@@ -186,6 +266,7 @@ function renderSummary() {
 
 function renderNav() {
   const bundle = currentBundle();
+  if (!pageNav) return;
   pageNav.innerHTML = bundle.navigation
     .map((section) => {
       const buttons = section.pages
@@ -221,9 +302,35 @@ function renderNav() {
 
 
 function renderMetrics(page) {
-  metricFill.textContent = page.autofill_count;
-  metricReview.textContent = page.review_count;
-  metricBlocked.textContent = page.blocked_count;
+  setText(metricFill, page.autofill_count);
+  setText(metricReview, page.review_count);
+  setText(metricBlocked, page.blocked_count);
+}
+
+
+function renderPageFields(page) {
+  if (!pageFieldsBody) return;
+  const fields = [
+    ...(page.fill || []).map((field) => ({ ...field, status: "ready" })),
+    ...(page.review || []).map((field) => ({ ...field, status: "needs_review" })),
+    ...(page.blocked || []).map((field) => ({ ...field, status: "blocked" })),
+  ];
+  pageFieldsBody.innerHTML = fields.length
+    ? fields
+        .slice(0, 18)
+        .map((field) => {
+          const label = field.label || field.ds160_field || field.field || field.name || "--";
+          const value = field.value ?? field.answer ?? field.source_value ?? "--";
+          return `
+            <tr>
+              <td>${escapeHtml(label)}</td>
+              <td>${escapeHtml(value || "--")}</td>
+              <td><span class="pill ${pillClass(field.status)}">${escapeHtml(statusLabel(field.status))}</span></td>
+            </tr>
+          `;
+        })
+        .join("")
+    : `<tr><td>${escapeHtml(page.label)}</td><td>无可展示字段</td><td><span class="pill pill-neutral">参考页</span></td></tr>`;
 }
 
 
@@ -234,13 +341,12 @@ function render() {
   }
   const page = getPage(state.currentPageId);
   if (!page) return;
-  pageTitle.textContent = `${page.label}${state.completed[page.page_id] ? " · 已完成预填" : ""}`;
+  setText(pageTitle, `${page.label}${state.completed[page.page_id] ? " · 已完成预填" : ""}`);
   renderSummary();
   renderNav();
   renderMetrics(page);
-  if (applicationIdEl) {
-    applicationIdEl.textContent = state.applicationId || "--";
-  }
+  renderPageFields(page);
+  setText(applicationIdEl, state.applicationId || "--");
   renderLogs();
 }
 
@@ -268,25 +374,25 @@ async function checkServerStatus() {
     state.dossierLoaded = Boolean(data.dossier_document_loaded);
     setApplicationId(data.application_id);
     if (!data.connected) {
-      serverStatus.textContent = "未连接浏览器";
+      setText(serverStatus, "未连接浏览器");
       serverStatus.style.color = "var(--c-warn, #f5a623)";
     } else if (!data.ceac_tab_found) {
-      serverStatus.textContent = "已连接 (无DS-160标签)";
+      setText(serverStatus, "已连接 (无DS-160标签)");
       serverStatus.style.color = "var(--c-warn, #f5a623)";
     } else {
-      serverStatus.textContent = "已连接 ✓";
+      setText(serverStatus, "已连接 ✓");
       serverStatus.style.color = "var(--c-ok, #6fcf97)";
     }
     if (data.dossier_document_loaded) {
-      intakeDocStatus.textContent = "已导入";
+      setText(intakeDocStatus, "已导入");
       if (!currentBundle()) {
         await fetchBundle();
       }
     }
   } catch {
     state.serverConnected = false;
-    serverStatus.textContent = "服务未启动";
-    serverStatus.style.color = "var(--c-err, #eb5757)";
+    setText(serverStatus, "服务未启动");
+    if (serverStatus) serverStatus.style.color = "var(--c-err, #eb5757)";
   }
 }
 
@@ -297,24 +403,25 @@ function isEncryptedPayload(payload) {
 
 
 async function loadIntakeDocument() {
+  if (!intakeFile || !loadIntakeButton) return;
   const file = intakeFile.files?.[0];
   if (!file) {
     pushLog("error", "文件", "未选择");
     return;
   }
-  loadIntakeButton.disabled = true;
-  loadIntakeButton.textContent = "导入中…";
-  intakeDocStatus.textContent = "导入中";
+  setDisabled(loadIntakeButton, true);
+  setButtonText(loadIntakeButton, "导入中…");
+  setText(intakeDocStatus, "导入中");
   try {
     const text = await file.text();
     const payload = JSON.parse(text);
     const encrypted = isEncryptedPayload(payload);
     if (encrypted) {
-      intakePassphraseField.style.display = "";
+      setDisplay(intakePassphraseField, "");
     }
     let endpoint, body;
     if (encrypted) {
-      const passphrase = (intakePassphrase.value || "").trim();
+      const passphrase = (intakePassphrase?.value || "").trim();
       if (!passphrase) {
         throw new Error("此文件已加密，请输入密码。");
       }
@@ -333,25 +440,25 @@ async function loadIntakeDocument() {
     if (!res.ok) {
       throw new Error(data.detail || "导入资料文档失败");
     }
-    intakeDocStatus.textContent = "已导入";
+    setText(intakeDocStatus, "已导入");
     if (encrypted) {
-      intakePassphraseField.style.display = "none";
-      intakePassphrase.value = "";
+      setDisplay(intakePassphraseField, "none");
+      if (intakePassphrase) intakePassphrase.value = "";
     }
     await fetchBundle();
     pushLog("success", "导入", file.name + (encrypted ? " (已解密)" : ""));
   } catch (error) {
     pushLog("error", "导入失败", error.message || "失败");
-    intakeDocStatus.textContent = "导入失败";
+    setText(intakeDocStatus, "导入失败");
   } finally {
-    loadIntakeButton.disabled = false;
-    loadIntakeButton.textContent = "导入 JSON";
+    setDisabled(loadIntakeButton, false);
+    setButtonText(loadIntakeButton, "导入 JSON");
     checkServerStatus();
   }
 }
 
 
-intakeFile.addEventListener("change", function () {
+if (intakeFile) intakeFile.addEventListener("change", function () {
   const file = intakeFile.files?.[0];
   if (!file) return;
   const reader = new FileReader();
@@ -359,31 +466,31 @@ intakeFile.addEventListener("change", function () {
     try {
       const payload = JSON.parse(e.target.result);
       if (isEncryptedPayload(payload)) {
-        intakePassphraseField.style.display = "";
-        intakeDocStatus.textContent = "已加密 - 需要密码";
+        setDisplay(intakePassphraseField, "");
+        setText(intakeDocStatus, `${file.name} · 已加密，需要密码`);
       } else {
-        intakePassphraseField.style.display = "none";
-        intakePassphrase.value = "";
-        intakeDocStatus.textContent = "未导入";
+        setDisplay(intakePassphraseField, "none");
+        if (intakePassphrase) intakePassphrase.value = "";
+        setText(intakeDocStatus, `${file.name} · 待导入`);
       }
     } catch {
-      intakePassphraseField.style.display = "none";
-      intakeDocStatus.textContent = "未导入";
+      setDisplay(intakePassphraseField, "none");
+      setText(intakeDocStatus, "文件格式无法读取");
     }
   };
   reader.readAsText(file);
 });
 
 
-loadIntakeButton.addEventListener("click", loadIntakeDocument);
+if (loadIntakeButton) loadIntakeButton.addEventListener("click", loadIntakeDocument);
 
-fillButton.addEventListener("click", async () => {
+if (fillButton) fillButton.addEventListener("click", async () => {
   if (!currentBundle()) {
     pushLog("error", "填入", "未导入");
     return;
   }
-  fillButton.disabled = true;
-  fillButton.textContent = "填入中…";
+  setDisabled(fillButton, true);
+  setButtonText(fillButton, "填入中…");
   try {
     await syncCurrentBrowserPage({ silent: true });
     const filledPageId = state.currentPageId;
@@ -409,36 +516,36 @@ fillButton.addEventListener("click", async () => {
   } catch {
     pushLog("error", "网络错误", "服务未启动");
   } finally {
-    fillButton.disabled = false;
-    fillButton.textContent = "一键填入";
+    setDisabled(fillButton, false);
+    setButtonText(fillButton, "一键填入");
     checkServerStatus();
   }
 });
 
 
 function disableFillButtons() {
-  fillButton.disabled = true;
-  fillContinueButton.disabled = true;
-  fillAllButton.disabled = true;
+  setDisabled(fillButton, true);
+  setDisabled(fillContinueButton, true);
+  setDisabled(fillAllButton, true);
 }
 
 function enableFillButtons() {
-  fillButton.disabled = false;
-  fillContinueButton.disabled = false;
-  fillAllButton.disabled = false;
-  fillButton.textContent = "一键填入";
-  fillContinueButton.textContent = "填完并翻页";
-  fillAllButton.textContent = "一键填完全部";
+  setDisabled(fillButton, false);
+  setDisabled(fillContinueButton, false);
+  setDisabled(fillAllButton, false);
+  setButtonText(fillButton, "一键填入");
+  setButtonText(fillContinueButton, "填完并翻页");
+  setButtonText(fillAllButton, "一键填完全部");
 }
 
 
-fillContinueButton.addEventListener("click", async () => {
+if (fillContinueButton) fillContinueButton.addEventListener("click", async () => {
   if (!currentBundle() || !state.currentPageId) {
     pushLog("error", "翻页", "未导入或未选中页面");
     return;
   }
   disableFillButtons();
-  fillContinueButton.textContent = "填入翻页中…";
+  setButtonText(fillContinueButton, "填入翻页中…");
   try {
     await syncCurrentBrowserPage({ silent: true });
     const filledPageId = state.currentPageId;
@@ -473,7 +580,7 @@ fillContinueButton.addEventListener("click", async () => {
 });
 
 
-cancelFillAllButton.addEventListener("click", () => {
+if (cancelFillAllButton) cancelFillAllButton.addEventListener("click", () => {
   state.cancelFillAll = true;
   if (state.fillAllAbortController) {
     state.fillAllAbortController.abort();
@@ -489,7 +596,7 @@ cancelFillAllButton.addEventListener("click", () => {
   pushLog("warn", "取消", "正在停止批量填入…");
 });
 
-fillAllButton.addEventListener("click", async () => {
+if (fillAllButton) fillAllButton.addEventListener("click", async () => {
   if (!currentBundle()) {
     pushLog("error", "全部填入", "未导入");
     return;
@@ -510,8 +617,8 @@ fillAllButton.addEventListener("click", async () => {
 
   disableFillButtons();
   state.cancelFillAll = false;
-  progressBarContainer.style.display = "block";
-  fillAllButton.textContent = "全部填入中…";
+  setDisplay(progressBarContainer, "block");
+  setButtonText(fillAllButton, "全部填入中…");
   pushLog("info", "全部填入", `从第 ${startIndex + 1}/${implementePages.length} 页开始`);
 
   let stopped = false;
@@ -528,9 +635,9 @@ fillAllButton.addEventListener("click", async () => {
     const current = index + 1;
     const total = implementePages.length;
     const pct = Math.round((current / total) * 100);
-    progressBar.style.width = `${pct}%`;
-    progressText.textContent = `${current} / ${total}`;
-    fillAllButton.textContent = `填入中 ${current}/${total}…`;
+    if (progressBar) progressBar.style.width = `${pct}%`;
+    setText(progressText, `${current} / ${total}`);
+    setButtonText(fillAllButton, `填入中 ${current}/${total}…`);
 
     try {
       state.fillAllAbortController = new AbortController();
@@ -590,8 +697,8 @@ fillAllButton.addEventListener("click", async () => {
     }
   }
 
-  progressBarContainer.style.display = "none";
-  progressBar.style.width = "0%";
+  setDisplay(progressBarContainer, "none");
+  if (progressBar) progressBar.style.width = "0%";
   state.fillAllAbortController = null;
   if (state.fillAllDelayId) {
     clearTimeout(state.fillAllDelayId);
@@ -640,6 +747,43 @@ async function clearCheckpoint() {
   } catch {
     // best effort
   }
+}
+
+
+if (syncPageButton) {
+  syncPageButton.addEventListener("click", async () => {
+    try {
+      const data = await syncCurrentBrowserPage({ silent: false });
+      pushLog("success", "页面识别", `${data.page_key || "unknown"} · ${data.title || ""}`);
+    } catch (error) {
+      pushLog("error", "页面识别失败", error.message || "无法读取浏览器当前页");
+    }
+  });
+}
+
+
+if (clearCheckpointButton) {
+  clearCheckpointButton.addEventListener("click", clearCheckpoint);
+}
+
+
+if (checkDriftButton) {
+  checkDriftButton.addEventListener("click", async () => {
+    try {
+      const res = await fetch(`${SERVER_BASE}/dom-drift`, { signal: AbortSignal.timeout(5000) });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "页面漂移检测失败");
+      }
+      if (data.healthy) {
+        pushLog("success", "漂移检测", `${data.page_key}: ${data.found}/${data.total_expected} selectors`);
+      } else {
+        pushLog("warn", "漂移检测", `${data.page_key}: 缺失 ${data.missing.join(", ") || "unknown"}`);
+      }
+    } catch (error) {
+      pushLog("error", "漂移检测失败", error.message || "无法检测当前页");
+    }
+  });
 }
 
 

@@ -1,0 +1,1299 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head><script data-od-sandbox-shim>(function(){
+  function makeStore(){
+    var data = {};
+    var api = {
+      getItem: function(k){ return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; },
+      setItem: function(k, v){ data[k] = String(v); },
+      removeItem: function(k){ delete data[k]; },
+      clear: function(){ data = {}; },
+      key: function(i){ return Object.keys(data)[i] || null; }
+    };
+    Object.defineProperty(api, 'length', { get: function(){ return Object.keys(data).length; } });
+    return api;
+  }
+  function tryShim(name){
+    var works = false;
+    try { works = !!window[name] && typeof window[name].getItem === 'function'; void window[name].length; }
+    catch (_) { works = false; }
+    if (works) return;
+    try { Object.defineProperty(window, name, { configurable: true, value: makeStore() }); }
+    catch (_) { try { window[name] = makeStore(); } catch (__) {} }
+  }
+  tryShim('localStorage');
+  tryShim('sessionStorage');
+})();</script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DS-160 签证助手</title>
+  <style>
+    /* ===== Tech/Utility palette — light ===== */
+    :root {
+      --bg:       oklch(98% 0.005 250);
+      --surface:  oklch(100% 0 0);
+      --fg:       oklch(22% 0.02 240);
+      --muted:    oklch(50% 0.018 240);
+      --border:   oklch(90% 0.008 240);
+      --accent:   oklch(58% 0.16 145);
+      --accent-dim: oklch(58% 0.16 145 / 0.12);
+      --warn:     oklch(62% 0.17 65);
+      --warn-dim: oklch(62% 0.17 65 / 0.12);
+      --danger:   oklch(52% 0.19 22);
+      --danger-dim: oklch(52% 0.19 22 / 0.1);
+      --success:  oklch(55% 0.14 160);
+      --success-dim: oklch(55% 0.14 160 / 0.12);
+      --font-display: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Inter", "Segoe UI", system-ui, sans-serif;
+      --font-body:    -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Inter", "Segoe UI", system-ui, sans-serif;
+      --font-mono:    "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+      --radius: 6px;
+      --radius-sm: 3px;
+    }
+
+    /* ===== Dark mode ===== */
+    [data-theme="dark"] {
+      --bg:       oklch(18% 0.015 240);
+      --surface:  oklch(22% 0.012 240);
+      --fg:       oklch(92% 0.005 250);
+      --muted:    oklch(62% 0.015 240);
+      --border:   oklch(30% 0.012 240);
+      --accent-dim: oklch(58% 0.16 145 / 0.18);
+      --warn-dim: oklch(62% 0.17 65 / 0.16);
+      --danger-dim: oklch(52% 0.19 22 / 0.15);
+      --success-dim: oklch(55% 0.14 160 / 0.16);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--fg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ===== Top bar ===== */
+    .shell {
+      position: sticky; top: 0; z-index: 10;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+    }
+    .shell-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; align-items: center; gap: 32px;
+      padding: 0 32px; height: 52px;
+    }
+    .shell-logo {
+      font-family: var(--font-mono); font-size: 13px;
+      font-weight: 600; letter-spacing: -0.01em;
+      color: var(--fg); white-space: nowrap;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .shell-logo .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+    }
+    .shell-nav {
+      display: flex; gap: 4px; flex: 1;
+    }
+    .shell-nav button {
+      font-family: var(--font-body); font-size: 13px; font-weight: 500;
+      color: var(--muted); background: none; border: none;
+      padding: 6px 14px; border-radius: var(--radius-sm);
+      cursor: pointer; transition: color 0.15s, background 0.15s;
+    }
+    .shell-nav button:hover { color: var(--fg); background: var(--accent-dim); }
+    .shell-nav button.active { color: var(--accent); background: var(--accent-dim); }
+
+    .shell-actions { display: flex; align-items: center; gap: 12px; }
+    .theme-toggle {
+      font-family: var(--font-mono); font-size: 12px;
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--muted); border-radius: var(--radius);
+      padding: 5px 12px; cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .theme-toggle:hover { border-color: var(--accent); color: var(--fg); }
+    .theme-toggle .icon { font-size: 14px; line-height: 1; }
+
+    /* ===== Main content ===== */
+    .main { flex: 1; max-width: 1100px; margin: 0 auto; width: 100%; padding: 32px; }
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ===== Section ===== */
+    .section { margin-bottom: 28px; }
+    .section-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 16px; padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-num {
+      font-family: var(--font-mono); font-size: 11px;
+      color: var(--accent); font-weight: 600;
+      background: var(--accent-dim); padding: 2px 8px;
+      border-radius: var(--radius-sm);
+    }
+    .section-title { font-size: 16px; font-weight: 600; color: var(--fg); }
+    .section-sub { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+    /* ===== Form grid ===== */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 18px; }
+    .group-head {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+      padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    }
+    .group-head h2 { font-size: 18px; font-weight: 600; }
+    .eyebrow {
+      font-family: var(--font-mono); font-size: 11px; color: var(--accent);
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .section-label {
+      font-size: 15px; font-weight: 600; color: var(--fg);
+      margin-top: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    }
+    .grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
+    }
+    .grid.two { grid-template-columns: repeat(2, 1fr); }
+    .grid label, .photo-upload-section label {
+      display: flex; flex-direction: column; gap: 5px;
+      font-size: 12px; font-weight: 500; color: var(--muted);
+    }
+    .grid label.full, .photo-upload-section label.full { grid-column: 1 / -1; }
+    .grid input, .grid select, .grid textarea, .photo-upload-section input {
+      font-family: var(--font-body); font-size: 14px;
+      color: var(--fg); background: var(--bg);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 8px 12px; outline: none; width: 100%;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .grid textarea { min-height: 78px; resize: vertical; }
+    .grid input:focus, .grid select:focus, .grid textarea:focus {
+      border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+    .inline-pair { display: grid; grid-template-columns: 1fr 130px; gap: 8px; }
+    .security-grid {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
+    }
+    .toggle {
+      min-height: 42px; flex-direction: row !important; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 9px 12px; border: 1px solid var(--border);
+      border-radius: var(--radius); background: var(--bg); color: var(--fg) !important;
+    }
+    .toggle input { width: auto !important; accent-color: var(--accent); }
+    .field-hint, .photo-hint, .progress-text { font-size: 11px; color: var(--muted); }
+    .form-actions.compact { display: flex; gap: 8px; margin-top: 4px; }
+    .intake-actions { align-items: center; flex-wrap: wrap; }
+    .intake-actions #encrypt-passphrase { max-width: 190px; }
+    .code-block {
+      font-family: var(--font-mono); font-size: 11px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 12px; overflow: auto; max-height: 320px;
+    }
+    .form-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .form-grid.cols-1 { grid-template-columns: 1fr; }
+    .form-field { display: flex; flex-direction: column; gap: 4px; }
+    .form-field.span-2 { grid-column: span 2; }
+    .form-field.span-3 { grid-column: span 3; }
+
+    .form-label {
+      font-size: 12px; font-weight: 500; color: var(--muted);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .form-label .code {
+      font-family: var(--font-mono); font-size: 10px;
+      color: var(--muted); background: var(--bg);
+      border: 1px solid var(--border); padding: 1px 5px;
+      border-radius: var(--radius-sm);
+    }
+    .form-input, .form-select, .form-textarea {
+      font-family: var(--font-body); font-size: 14px;
+      color: var(--fg); background: var(--bg);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 8px 12px; outline: none; width: 100%;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+    .form-input::placeholder { color: var(--muted); opacity: 0.6; }
+    .form-select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+      padding-right: 32px;
+    }
+    .form-textarea { min-height: 80px; resize: vertical; }
+    .form-hint { font-size: 11px; color: var(--muted); }
+
+    /* Radio / checkbox groups */
+    .radio-group, .check-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .radio-item, .check-item {
+      font-size: 13px; display: flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border: 1px solid var(--border);
+      border-radius: var(--radius); background: var(--bg);
+      cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    }
+    .radio-item:hover, .check-item:hover { border-color: var(--accent); background: var(--surface); }
+    .radio-item input, .check-item input { accent-color: var(--accent); }
+
+    /* ===== Buttons ===== */
+    .btn {
+      font-family: var(--font-body); font-size: 13px; font-weight: 500;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 8px 18px; cursor: pointer; display: inline-flex;
+      align-items: center; gap: 6px; transition: all 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-primary:hover { filter: brightness(1.08); }
+    .btn-secondary { background: var(--bg); color: var(--fg); }
+    .btn-secondary:hover { border-color: var(--accent); }
+    .btn-ghost { background: none; border-color: transparent; color: var(--muted); }
+    .btn-ghost:hover { color: var(--fg); background: var(--bg); }
+    .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+    .btn-danger:hover { filter: brightness(1.08); }
+
+    .btn-lg { padding: 10px 24px; font-size: 14px; }
+    .btn-group { display: flex; gap: 8px; margin-top: 24px; }
+
+    /* ===== Status pills ===== */
+    .pill {
+      font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+      padding: 2px 8px; border-radius: var(--radius-sm); display: inline-flex;
+      align-items: center; gap: 4px;
+    }
+    .pill-success { background: var(--success-dim); color: var(--success); }
+    .pill-warn { background: var(--warn-dim); color: var(--warn); }
+    .pill-danger { background: var(--danger-dim); color: var(--danger); }
+    .pill-neutral { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+
+    /* ===== Dashboard cards ===== */
+    .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .dash-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px;
+    }
+    .dash-card.full { grid-column: 1 / -1; }
+    .dash-card-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+    }
+    .dash-card-title { font-size: 14px; font-weight: 600; color: var(--fg); }
+    .dash-card-badge {
+      font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+      padding: 1px 6px; border-radius: var(--radius-sm);
+      background: var(--accent-dim); color: var(--accent);
+    }
+
+    /* ===== Progress bar ===== */
+    .progress-bar {
+      height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; background: var(--accent); border-radius: 3px;
+      transition: width 0.4s ease; width: 0%;
+    }
+    .progress-stats {
+      display: flex; justify-content: space-between; margin-top: 8px;
+      font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+    }
+
+    /* ===== Log table ===== */
+    .log-table {
+      width: 100%; border-collapse: collapse;
+      font-family: var(--font-mono); font-size: 12px;
+    }
+    .log-table th {
+      text-align: left; font-weight: 500; color: var(--muted);
+      padding: 8px 12px; border-bottom: 1px solid var(--border);
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .log-table td {
+      padding: 7px 12px; border-bottom: 1px solid var(--border);
+      color: var(--fg);
+    }
+    .log-table tbody tr:hover { background: var(--accent-dim); }
+    .log-table .time { color: var(--muted); white-space: nowrap; }
+
+    /* ===== Page indicator ===== */
+    .page-indicator {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); font-family: var(--font-mono); font-size: 12px;
+    }
+    .page-indicator .dot-live {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--success);
+      animation: pulse-dot 2s ease infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+
+    /* ===== Drop zone ===== */
+    .drop-zone {
+      border: 1px dashed var(--border); border-radius: var(--radius);
+      padding: 32px; text-align: center; cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .drop-zone:hover { border-color: var(--accent); background: var(--accent-dim); }
+    .drop-zone input { display: none; }
+    .drop-zone .dz-icon { font-size: 28px; margin-bottom: 8px; }
+    .drop-zone .dz-text { font-size: 13px; color: var(--muted); }
+    .drop-zone .dz-code { font-family: var(--font-mono); font-size: 11px; color: var(--accent); margin-top: 4px; }
+
+    .compact-stack { display: flex; flex-direction: column; gap: 10px; }
+    .micro-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .metric-box {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 10px 12px;
+    }
+    .metric-box span {
+      display: block; font-family: var(--font-mono); font-size: 10px;
+      color: var(--muted); text-transform: uppercase;
+    }
+    .metric-box strong { display: block; margin-top: 5px; font-size: 18px; line-height: 1; }
+    .page-nav { max-height: 300px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+    .flow-section-title {
+      font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+      text-transform: uppercase; margin-bottom: 6px;
+    }
+    .page-button {
+      width: 100%; text-align: left; font-family: var(--font-body);
+      background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 8px 10px; cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .page-button + .page-button { margin-top: 6px; }
+    .page-button:hover, .page-button.active { border-color: var(--accent); background: var(--accent-dim); }
+    .page-button.done { border-color: var(--success); }
+    .page-button.reference, .page-button.planned { color: var(--muted); }
+    .page-meta { margin-top: 3px; font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .summary-card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 10px 12px;
+    }
+    .summary-card .eyebrow {
+      display: block; font-family: var(--font-mono); font-size: 10px;
+      color: var(--muted); margin-bottom: 4px;
+    }
+    .summary-card strong { font-size: 13px; }
+    .passphrase-field { display: flex; flex-direction: column; gap: 5px; }
+    .status-line {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      font-family: var(--font-mono); font-size: 12px; color: var(--muted);
+    }
+    .terminal-detail { color: var(--muted); word-break: break-word; }
+
+    /* ===== Toast ===== */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 20px;
+      font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      z-index: 100; opacity: 0; transform: translateY(8px);
+      transition: all 0.2s ease; pointer-events: none;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+    .toast .toast-icon { font-size: 16px; }
+
+    /* ===== Footer ===== */
+    .app-footer {
+      text-align: center; padding: 20px 32px 28px;
+      font-size: 11px; color: var(--muted); border-top: 1px solid var(--border);
+    }
+    .app-footer span { font-family: var(--font-mono); }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 768px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .grid, .grid.two, .security-grid { grid-template-columns: 1fr; }
+      .form-grid.cols-3 { grid-template-columns: 1fr; }
+      .form-field.span-2, .form-field.span-3 { grid-column: span 1; }
+      .dash-grid { grid-template-columns: 1fr; }
+      .summary, .micro-grid { grid-template-columns: 1fr; }
+      .shell-inner { padding: 0 16px; gap: 16px; }
+      .main { padding: 20px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ===== Shell ===== -->
+<header class="shell">
+  <div class="shell-inner">
+    <div class="shell-logo">
+      <span class="dot"></span>
+      DS-160 助手
+    </div>
+    <nav class="shell-nav">
+      <button class="active" data-screen="intake" onclick="switchScreen('intake')">资料采集</button>
+      <button data-screen="fill" onclick="switchScreen('fill')">自动填表</button>
+    </nav>
+    <div class="shell-actions">
+      <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">
+        <span class="icon">&#x25d0;</span>
+        <span id="themeLabel">暗色</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ===== Main content ===== -->
+<main class="main">
+
+  <!-- ========== Screen 1: 资料采集 ========== -->
+  <div class="screen active" id="screen-intake" data-screen-label="01 资料采集">
+<form id="manual-form" class="form-group">
+            <div class="group-head">
+              <p class="eyebrow">Manual Entry</p>
+              <h2>填写 full dossier</h2>
+            </div>
+            <div class="progress-track"><div id="form-progress-bar" class="progress-fill" style="width:0%"></div></div>
+            <div id="form-progress-text" class="progress-text">已填写: 0%</div>
+
+            <!-- ============================================================
+                 SECTION 1: CASE & IDENTITY
+                 ============================================================ -->
+            <h3 class="section-label">基本信息和护照</h3>
+            <div class="grid two">
+              <label><span>Case ID</span><input name="case_id" required placeholder="CN-B1B2-2026-001" /><small class="field-hint" data-hint-for="case_id"></small></label>
+              <label><span>签证类别</span><input name="travel_plan.visa_class" required placeholder="B1/B2" value="B1/B2" /><small class="field-hint" data-hint-for="travel_plan.visa_class"></small></label>
+              <label class="full"><span>护照英文姓</span><input name="identity.surname" required placeholder="ZHANG" /><small class="field-hint" data-hint-for="identity.surname"></small></label>
+              <label class="full"><span>护照英文名</span><input name="identity.given_names" required placeholder="WEI" /><small class="field-hint" data-hint-for="identity.given_names"></small></label>
+              <label class="full"><span>中文姓名</span><input name="identity.native_full_name" placeholder="张伟" /><small class="field-hint" data-hint-for="identity.native_full_name"></small></label>
+              <label><span>性别</span><select name="identity.sex" required><option value="MALE">男</option><option value="FEMALE">女</option></select><small class="field-hint" data-hint-for="identity.sex"></small></label>
+              <label><span>婚姻状态</span><select name="identity.marital_status" required><option value="SINGLE">未婚</option><option value="MARRIED">已婚</option><option value="DIVORCED">离婚</option><option value="WIDOWED">丧偶</option></select><small class="field-hint" data-hint-for="identity.marital_status"></small></label>
+              <label><span>出生日期</span><input type="date" name="identity.date_of_birth" required /><small class="field-hint" data-hint-for="identity.date_of_birth"></small></label>
+              <label><span>出生城市</span><input name="identity.birth_city" required placeholder="Shanghai" /><small class="field-hint" data-hint-for="identity.birth_city"></small></label>
+              <label><span>出生省份</span><input name="identity.birth_province" placeholder="Shanghai" /><small class="field-hint" data-hint-for="identity.birth_province"></small></label>
+              <label><span>出生国家</span><input name="identity.birth_country" required placeholder="CHINA" value="CHINA" /><small class="field-hint" data-hint-for="identity.birth_country"></small></label>
+              <label><span>国籍</span><input name="identity.nationality" required placeholder="CHINA" value="CHINA" /><small class="field-hint" data-hint-for="identity.nationality"></small></label>
+              <label><span>护照号码</span><input name="identity.passport_number" required placeholder="E12345678" /><small class="field-hint" data-hint-for="identity.passport_number"></small></label>
+              <label><span>护照签发国家</span><input name="identity.passport_issuance_country" required placeholder="CHINA" value="CHINA" /><small class="field-hint" data-hint-for="identity.passport_issuance_country"></small></label>
+              <label><span>护照签发日期</span><input type="date" name="identity.passport_issue_date" required /><small class="field-hint" data-hint-for="identity.passport_issue_date"></small></label>
+              <label><span>护照失效日期</span><input type="date" name="identity.passport_expiration_date" required /><small class="field-hint" data-hint-for="identity.passport_expiration_date"></small></label>
+              <label><span>护照本编号</span><input name="identity.passport_book_number" placeholder="无可留空" /><small class="field-hint" data-hint-for="identity.passport_book_number"></small></label>
+              <label class="toggle"><span>有其他国家国籍</span><input type="checkbox" name="identity.other_nationality" /></label>
+              <label class="toggle"><span>有其他国永久居留权</span><input type="checkbox" name="identity.permanent_resident_other_country" /></label>
+              <label><span>身份证号码</span><input name="identity.national_id_number" placeholder="选填" /></label>
+              <label><span>美国社保号 (SSN)</span><input name="identity.us_social_security_number" placeholder="无可留空" /></label>
+              <label><span>美国纳税号 (ITIN)</span><input name="identity.us_taxpayer_id_number" placeholder="无可留空" /></label>
+              <label class="full"><span>Identity Source IDs</span><input name="identity.source_ids" required placeholder="passport_scan, passport_translation" /><small class="field-hint" data-hint-for="identity.source_ids"></small></label>
+            </div>
+
+            <!-- ============================================================
+                 SECTION 2: TRAVEL PLAN
+                 ============================================================ -->
+            <h3 class="section-label">旅行计划</h3>
+            <div class="grid two">
+              <label class="full"><span>赴美目的说明</span><textarea name="travel_plan.purpose_notes" rows="3" placeholder="Attend supplier meetings in California and combine with short tourism."></textarea><small class="field-hint" data-hint-for="travel_plan.purpose_notes"></small></label>
+              <label><span>预计到达日期</span><input type="date" name="travel_plan.intended_arrival_date" /><small class="field-hint" data-hint-for="travel_plan.intended_arrival_date"></small></label>
+              <label><span>停留时长</span><div class="inline-pair"><input name="travel_plan.intended_length_of_stay_value" placeholder="12" /><select name="travel_plan.intended_length_of_stay_unit"><option value="">请选择</option><option value="DAYS">天</option><option value="WEEKS">周</option><option value="MONTHS">月</option></select></div><small class="field-hint" data-hint-for="travel_plan.intended_length_of_stay_value"></small></label>
+              <label><span>费用承担方</span><input name="travel_plan.payer_name" placeholder="Shanghai Example Trading Co., Ltd." /></label>
+              <label><span>美国联系人姓名</span><input name="travel_plan.us_contact_name" placeholder="Michael Chen" /></label>
+              <label><span>机构名称</span><input name="travel_plan.us_contact_organization" placeholder="Example US Imports" /></label>
+              <label><span>联系电话</span><input name="travel_plan.us_contact_phone" placeholder="+1 415 555 0187" /></label>
+              <label class="full"><span>联系人地址</span><input name="travel_plan.us_contact_address_line1" placeholder="500 Market Street" /></label>
+              <label><span>城市</span><input name="travel_plan.us_contact_city" placeholder="San Francisco" /></label>
+              <label><span>州</span><input name="travel_plan.us_contact_state" placeholder="California" /></label>
+              <label><span>邮编</span><input name="travel_plan.us_contact_postal_code" placeholder="94105" /></label>
+              <label><span>邮箱</span><input type="email" name="travel_plan.us_contact_email" placeholder="mchen@example.com" /></label>
+              <label class="full"><span>Travel Source IDs</span><input name="travel_plan.source_ids" required placeholder="itinerary_email, invitation_letter" /></label>
+            </div>
+
+            <!-- ============================================================
+                 SECTION 3: EMPLOYMENT / EDUCATION (FULL)
+                 ============================================================ -->
+            <h3 class="section-label">当前工作</h3>
+            <div class="grid two">
+              <label><span>当前职业</span><select name="employment_education.primary_occupation"><option value="">请选择</option><option value="BUSINESSPERSON">企业人员</option><option value="STUDENT">学生</option><option value="OTHER">其他</option></select></label>
+              <label><span>当前单位</span><input name="employment_education.current_employer_name" placeholder="Shanghai Example Trading Co., Ltd." /></label>
+              <label class="full"><span>单位地址 1</span><input name="employment_education.current_employer_address" placeholder="88 Huaihai Middle Road" /></label>
+              <label><span>单位地址 2</span><input name="employment_education.current_employer_address_line2" placeholder="楼层/房间号" /></label>
+              <label><span>单位城市</span><input name="employment_education.employer_city" placeholder="Shanghai" /></label>
+              <label><span>单位省份/州</span><input name="employment_education.employer_state" placeholder="Shanghai" /></label>
+              <label><span>单位邮编</span><input name="employment_education.employer_postal_code" placeholder="200000" /></label>
+              <label><span>单位国家</span><input name="employment_education.employer_country" placeholder="CHINA" value="CHINA" /></label>
+              <label><span>单位电话</span><input name="employment_education.employer_phone" placeholder="+86 21 1234 5678" /></label>
+              <label><span>入职日期</span><input type="date" name="employment_education.current_employment_start_date" /></label>
+              <label class="full"><span>职位</span><input name="employment_education.current_job_title" placeholder="Senior Engineer" /></label>
+              <label class="full"><span>工作职责简述</span><textarea name="employment_education.current_job_duties" rows="2" placeholder="Describe your daily duties briefly."></textarea></label>
+              <label><span>主管姓</span><input name="employment_education.current_supervisor_surname" placeholder="WANG" /></label>
+              <label><span>主管名</span><input name="employment_education.current_supervisor_given_name" placeholder="LEI" /></label>
+              <label><span>月收入</span><input name="employment_education.monthly_income_local" placeholder="32000" /></label>
+            </div>
+
+            <h3 class="section-label">前工作（如适用）</h3>
+            <div class="grid two">
+              <label><span>前单位名称</span><input name="employment_education.previous_employer_name" placeholder="Previous Company Ltd." /></label>
+              <label class="full"><span>前单位地址</span><input name="employment_education.previous_employer_address" placeholder="100 Nanjing Rd" /></label>
+              <label><span>前单位城市</span><input name="employment_education.previous_employer_city" placeholder="Shanghai" /></label>
+              <label><span>前单位省/州</span><input name="employment_education.previous_employer_state" placeholder="Shanghai" /></label>
+              <label><span>前单位邮编</span><input name="employment_education.previous_employer_postal_code" placeholder="200000" /></label>
+              <label><span>前单位国家</span><input name="employment_education.previous_employer_country" placeholder="CHINA" /></label>
+              <label><span>前单位电话</span><input name="employment_education.previous_employer_phone" placeholder="+86 21 1234 5678" /></label>
+              <label><span>前职位</span><input name="employment_education.previous_job_title" placeholder="Engineer" /></label>
+              <label><span>前主管姓</span><input name="employment_education.previous_supervisor_surname" placeholder="LI" /></label>
+              <label><span>前主管名</span><input name="employment_education.previous_supervisor_given_name" placeholder="MING" /></label>
+              <label><span>前工作起始日</span><input type="date" name="employment_education.previous_employment_start_date" /></label>
+              <label><span>前工作结束日</span><input type="date" name="employment_education.previous_employment_end_date" /></label>
+              <label class="full"><span>前工作职责简述</span><textarea name="employment_education.previous_job_duties" rows="2" placeholder="Briefly describe your previous duties."></textarea></label>
+            </div>
+
+            <h3 class="section-label">学历信息</h3>
+            <div class="grid two">
+              <label><span>学校名称</span><input name="employment_education.school_name" placeholder="Fudan University" /></label>
+              <label class="full"><span>学校地址</span><input name="employment_education.school_address_line1" placeholder="220 Handan Rd" /></label>
+              <label><span>学校城市</span><input name="employment_education.school_city" placeholder="Shanghai" /></label>
+              <label><span>学校省/州</span><input name="employment_education.school_state" placeholder="Shanghai" /></label>
+              <label><span>学校邮编</span><input name="employment_education.school_postal_code" placeholder="200433" /></label>
+              <label><span>学校国家</span><input name="employment_education.school_country" placeholder="CHINA" /></label>
+              <label><span>专业</span><input name="employment_education.major_or_course_of_study" placeholder="Computer Science" /></label>
+              <label><span>入学日期</span><input type="date" name="employment_education.school_attendance_start_date" /></label>
+              <label><span>毕业日期</span><input type="date" name="employment_education.school_attendance_end_date" /></label>
+            </div>
+
+            <!-- ============================================================
+                 SECTION 4: ADDITIONAL BACKGROUND
+                 ============================================================ -->
+            <h3 class="section-label">其他背景信息</h3>
+            <div class="grid two">
+              <label><span>掌握语言</span><input name="employment_education.languages" placeholder="CHINESE, ENGLISH" /></label>
+              <label class="full"><span>过去五年内访问过的国家/地区</span><input name="employment_education.countries_visited" placeholder="JAPAN, THAILAND, FRANCE" /></label>
+              <label><span>所属部落/氏族名</span><input name="employment_education.clan_or_tribe_name" placeholder="无可留空" /></label>
+              <label class="full"><span>参加过的组织/社团</span><textarea name="employment_education.organization_memberships" rows="2" placeholder="Professional associations, charities, etc."></textarea></label>
+              <label class="full"><span>特殊技能或培训</span><textarea name="employment_education.specialized_skills_description" rows="2" placeholder="Firearms training, explosives, biological/chemical experience, etc."></textarea></label>
+            </div>
+
+            <h3 class="section-label">兵役记录（如适用）</h3>
+            <div class="grid two">
+              <label><span>服役国家</span><input name="employment_education.military_service_country" placeholder="无可留空" /></label>
+              <label><span>军种</span><input name="employment_education.military_branch" placeholder="Army / Navy / etc." /></label>
+              <label><span>军衔</span><input name="employment_education.military_rank" placeholder="无可留空" /></label>
+              <label><span>军事专业</span><input name="employment_education.military_specialty" placeholder="无可留空" /></label>
+              <label><span>服役起始日</span><input type="date" name="employment_education.military_service_start_date" /></label>
+              <label><span>服役结束日</span><input type="date" name="employment_education.military_service_end_date" /></label>
+              <label class="full"><span>如曾有反叛/游击队/武装组织相关经历，请说明</span><textarea name="employment_education.insurgent_organization_explanation" rows="2" placeholder="无可留空"></textarea></label>
+              <label class="full"><span>Employment Source IDs</span><input name="employment_education.source_ids" required placeholder="employment_letter" /></label>
+            </div>
+
+            <!-- ============================================================
+                 SECTION 5: FAMILY CONTACTS (FULL)
+                 ============================================================ -->
+            <h3 class="section-label">家庭成员</h3>
+            <div class="grid two">
+              <label><span>父亲姓名</span><input name="family_contacts.father_full_name" placeholder="ZHANG JIANGUO" /></label>
+              <label><span>父亲出生日期</span><input type="date" name="family_contacts.father_date_of_birth" /></label>
+              <label class="toggle"><span>父亲在美国</span><input type="checkbox" name="family_contacts.father_in_us" /></label>
+              <label><span>母亲姓名</span><input name="family_contacts.mother_full_name" placeholder="LI HUA" /></label>
+              <label><span>母亲出生日期</span><input type="date" name="family_contacts.mother_date_of_birth" /></label>
+              <label class="toggle"><span>母亲在美国</span><input type="checkbox" name="family_contacts.mother_in_us" /></label>
+              <label><span>配偶姓名</span><input name="family_contacts.spouse_full_name" placeholder="未婚可留空" /></label>
+              <label><span>配偶出生日期</span><input type="date" name="family_contacts.spouse_date_of_birth" /></label>
+              <label><span>配偶国籍</span><input name="family_contacts.spouse_nationality" placeholder="CHINA" /></label>
+              <label><span>配偶出生城市</span><input name="family_contacts.spouse_birth_city" placeholder="可选填" /></label>
+              <label><span>配偶出生国家</span><input name="family_contacts.spouse_birth_country" placeholder="CHINA" /></label>
+              <label class="toggle"><span>有直系亲属在美国</span><input type="checkbox" name="family_contacts.has_us_immediate_relatives" /></label>
+              <label class="toggle"><span>有其他亲属在美国</span><input type="checkbox" name="family_contacts.has_us_other_relatives" /></label>
+              <label><span>美国亲属姓名</span><input name="family_contacts.us_relative_name" placeholder="无可留空" /></label>
+              <label><span>美国亲属关系/身份</span><input name="family_contacts.us_relative_status" placeholder="例如 FRIEND / BROTHER / LPR" /></label>
+              <label class="full"><span>Family Source IDs</span><input name="family_contacts.source_ids" required placeholder="family_intake_form" /></label>
+            </div>
+
+            <!-- ============================================================
+                 SECTION 6: PERSONAL CONTACT (WAS MISSING!)
+                 ============================================================ -->
+            <h3 class="section-label">个人联系方式</h3>
+            <div class="grid two">
+              <label class="full"><span>家庭地址 1</span><input name="personal_contact.home_address_line1" placeholder="Room 501, Building 3, 88 Huaihai Rd" /></label>
+              <label><span>家庭地址 2</span><input name="personal_contact.home_address_line2" placeholder="可选填" /></label>
+              <label><span>城市</span><input name="personal_contact.home_city" placeholder="Shanghai" /></label>
+              <label><span>省/州</span><input name="personal_contact.home_state" placeholder="Shanghai" /></label>
+              <label><span>邮编</span><input name="personal_contact.home_postal_code" placeholder="200000" /></label>
+              <label><span>国家</span><input name="personal_contact.home_country" placeholder="CHINA" value="CHINA" /></label>
+              <label><span>主要电话</span><input name="personal_contact.primary_phone" placeholder="+86 138 0000 1234" /></label>
+              <label><span>次要电话</span><input name="personal_contact.secondary_phone" placeholder="可选填" /></label>
+              <label><span>工作电话</span><input name="personal_contact.work_phone" placeholder="可选填" /></label>
+              <label><span>电子邮箱</span><input type="email" name="personal_contact.email" placeholder="zhangwei@example.com" /></label>
+              <label><span>社交媒体平台</span><input name="personal_contact.social_media_platform" placeholder="如 WeChat / Facebook" /></label>
+              <label><span>社交媒体账号</span><input name="personal_contact.social_media_handle" placeholder="@zhangwei" /></label>
+              <label class="toggle"><span>邮寄地址同家庭地址</span><input type="checkbox" name="personal_contact.mailing_same_as_home" checked /></label>
+              <label class="full"><span>Contact Source IDs</span><input name="personal_contact.source_ids" placeholder="可选填" /></label>
+            </div>
+
+            <!-- ============================================================
+                 SECTION 7: PREVIOUS US TRAVEL (WAS MISSING!)
+                 ============================================================ -->
+            <h3 class="section-label">过往赴美记录</h3>
+            <div class="grid two">
+              <label class="toggle"><span>曾去过美国</span><input type="checkbox" name="previous_travel.has_previous_us_travel" /></label>
+              <label><span>上次抵达日期</span><input type="date" name="previous_travel.last_arrival_date" /></label>
+              <label><span>上次停留时长</span><input name="previous_travel.last_length_of_stay_value" placeholder="14" /></label>
+              <label><span>时长单位</span><select name="previous_travel.last_length_of_stay_unit"><option value="">请选择</option><option value="DAYS">天</option><option value="WEEKS">周</option><option value="MONTHS">月</option></select></label>
+              <label class="toggle"><span>曾有美国签证</span><input type="checkbox" name="previous_travel.has_previous_us_visa" /></label>
+              <label><span>上次签证号码</span><input name="previous_travel.previous_visa_number" placeholder="红色的签证 foil number" /></label>
+              <label><span>上次签证签发日</span><input type="date" name="previous_travel.previous_visa_issue_date" /></label>
+              <label class="toggle"><span>曾被拒签</span><input type="checkbox" name="previous_travel.visa_ever_refused" /></label>
+              <label class="toggle"><span>签证曾丢失/被盗</span><input type="checkbox" name="previous_travel.visa_ever_lost" /></label>
+              <label class="toggle"><span>签证曾被撤销</span><input type="checkbox" name="previous_travel.visa_ever_cancelled" /></label>
+              <label class="toggle"><span>曾有移民申请</span><input type="checkbox" name="previous_travel.has_immigrant_petition" /></label>
+              <label class="toggle"><span>有美国驾照</span><input type="checkbox" name="previous_travel.has_us_driver_license" /></label>
+              <label class="toggle"><span>已采集十指指纹</span><input type="checkbox" name="previous_travel.ten_print_collected" /></label>
+              <label class="full"><span>Travel Source IDs</span><input name="previous_travel.source_ids" placeholder="old_visa_scan" /></label>
+            </div>
+
+            <!-- ============================================================
+                 SECTION 8: SECURITY (ALIGNED 1:1 WITH DS-160 FILL ENGINE)
+                 Keys must match _fill_security_questions() in live_form_fill.py
+                 ============================================================ -->
+            <h3 class="section-label">安全背景 Part 1: 医疗/健康</h3>
+            <div class="security-grid">
+              <label class="toggle"><span>有传染性疾病（如结核病等）</span><input type="checkbox" name="security_background.yes_no_answers.communicable_disease" /></label>
+              <label class="toggle"><span>有身体或精神疾病影响行为能力</span><input type="checkbox" name="security_background.yes_no_answers.physical_or_mental_disorder" /></label>
+              <label class="toggle"><span>有药物滥用或成瘾问题</span><input type="checkbox" name="security_background.yes_no_answers.drug_abuser" /></label>
+            </div>
+
+            <h3 class="section-label">安全背景 Part 2: 刑事/非法活动</h3>
+            <div class="security-grid">
+              <label class="toggle"><span>曾被捕或被定罪</span><input type="checkbox" name="security_background.yes_no_answers.arrested_or_convicted" /></label>
+              <label class="toggle"><span>涉及管制物质（毒品等）违法行为</span><input type="checkbox" name="security_background.yes_no_answers.controlled_substances" /></label>
+              <label class="toggle"><span>涉及卖淫或嫖娼</span><input type="checkbox" name="security_background.yes_no_answers.prostitution_or_vice" /></label>
+              <label class="toggle"><span>涉及洗钱</span><input type="checkbox" name="security_background.yes_no_answers.money_laundering" /></label>
+              <label class="toggle"><span>涉及人口贩卖</span><input type="checkbox" name="security_background.yes_no_answers.human_trafficking" /></label>
+              <label class="toggle"><span>协助或参与严重形式的人口贩卖</span><input type="checkbox" name="security_background.yes_no_answers.assisted_severe_trafficking" /></label>
+              <label class="toggle"><span>涉及人口贩卖相关人员/收益</span><input type="checkbox" name="security_background.yes_no_answers.human_trafficking_related" /></label>
+            </div>
+
+            <h3 class="section-label">安全背景 Part 3: 恐怖/暴力/人权</h3>
+            <div class="security-grid">
+              <label class="toggle"><span>曾参与非法活动/组织</span><input type="checkbox" name="security_background.yes_no_answers.illegal_activity" /></label>
+              <label class="toggle"><span>曾参与恐怖活动</span><input type="checkbox" name="security_background.yes_no_answers.terrorist_activity" /></label>
+              <label class="toggle"><span>曾支持/资助恐怖活动</span><input type="checkbox" name="security_background.yes_no_answers.terrorist_support" /></label>
+              <label class="toggle"><span>曾是恐怖组织成员或代表</span><input type="checkbox" name="security_background.yes_no_answers.terrorist_org" /></label>
+              <label class="toggle"><span>曾有亲属参与恐怖活动</span><input type="checkbox" name="security_background.yes_no_answers.terrorist_rel" /></label>
+              <label class="toggle"><span>参与过种族灭绝</span><input type="checkbox" name="security_background.yes_no_answers.genocide" /></label>
+              <label class="toggle"><span>参与过酷刑</span><input type="checkbox" name="security_background.yes_no_answers.torture" /></label>
+              <label class="toggle"><span>参与过法外处决/政治暴力</span><input type="checkbox" name="security_background.yes_no_answers.extrajudicial_violence" /></label>
+              <label class="toggle"><span>曾作为儿童兵参与武装冲突</span><input type="checkbox" name="security_background.yes_no_answers.child_soldier" /></label>
+              <label class="toggle"><span>曾违反宗教自由</span><input type="checkbox" name="security_background.yes_no_answers.religious_freedom" /></label>
+              <label class="toggle"><span>曾参与强制人口控制政策</span><input type="checkbox" name="security_background.yes_no_answers.population_controls" /></label>
+              <label class="toggle"><span>涉及非法器官/人体组织移植</span><input type="checkbox" name="security_background.yes_no_answers.transplant" /></label>
+            </div>
+
+            <h3 class="section-label">安全背景 Part 4: 移民违规</h3>
+            <div class="security-grid">
+              <label class="toggle"><span>曾在美国被要求离开/驱逐听证</span><input type="checkbox" name="security_background.yes_no_answers.removal_hearing" /></label>
+              <label class="toggle"><span>曾以欺诈或虚假陈述获取签证/入境</span><input type="checkbox" name="security_background.yes_no_answers.immigration_fraud" /></label>
+              <label class="toggle"><span>曾未按时出席移民听证</span><input type="checkbox" name="security_background.yes_no_answers.fail_to_attend" /></label>
+              <label class="toggle"><span>曾违反签证条款停留/工作</span><input type="checkbox" name="security_background.yes_no_answers.visa_violation" /></label>
+              <label class="toggle"><span>曾被美国驱逐/递解出境</span><input type="checkbox" name="security_background.yes_no_answers.deport" /></label>
+            </div>
+
+            <h3 class="section-label">安全背景 Part 5: 其他</h3>
+            <div class="security-grid">
+              <label class="toggle"><span>曾非法转移/扣留美国公民子女监护权</span><input type="checkbox" name="security_background.yes_no_answers.child_custody" /></label>
+              <label class="toggle"><span>曾以美国公民身份投票违反规定</span><input type="checkbox" name="security_background.yes_no_answers.voting_violation" /></label>
+              <label class="toggle"><span>曾为避税放弃美国国籍</span><input type="checkbox" name="security_background.yes_no_answers.renounce_exp" /></label>
+              <label class="toggle"><span>曾在美国公立学校就读未偿还费用</span><input type="checkbox" name="security_background.yes_no_answers.attend_public_school_without_reimbursing" /></label>
+            </div>
+
+            <div class="grid two">
+              <label class="full"><span>Security Explanations JSON（如有 yes 需要说明）</span><textarea name="security_background.explanations" rows="4" placeholder='{"arrested_or_convicted":"Briefly explain the circumstances"}'></textarea></label>
+              <label class="full"><span>Security Source IDs</span><input name="security_background.source_ids" required placeholder="security_review_form" /></label>
+            </div>
+
+            <!-- ============================================================
+                 SECTION 9: EVIDENCE & PHOTO
+                 ============================================================ -->
+            <h3 class="section-label">证据目录和照片</h3>
+            <div class="grid two">
+              <label class="full"><span>Evidence Catalog JSON</span><textarea name="evidence_catalog" rows="4" placeholder='[{"id":"passport_scan","kind":"passport","description":"PRC passport bio page scan."}]'></textarea></label>
+            </div>
+            <div class="photo-upload-section">
+              <label class="full">
+                <span>签证照片上传</span>
+                <input id="photo-upload" type="file" accept="image/jpeg,image/png" />
+                <small class="photo-hint">需要2x2英寸(600x600像素以上)，白色背景，JPEG格式</small>
+                <img id="photo-preview" style="display:none;max-width:200px;margin-top:8px;border-radius:4px" alt="照片预览" />
+              </label>
+            </div>
+
+            <div class="form-actions compact">
+              <button id="manual-submit" type="submit" class="btn btn-primary btn-lg">保存资料</button>
+            </div>
+          
+
+    <div class="btn-group intake-actions">
+      <button id="download-json" type="button" class="btn btn-secondary btn-lg" disabled>
+        导出 Dossier JSON
+      </button>
+      <button id="copy-json" type="button" class="btn btn-ghost" disabled>
+        复制 JSON
+      </button>
+      <input id="encrypt-passphrase" class="form-input" type="password" placeholder="加密密码至少8位" autocomplete="new-password" />
+      <button id="download-encrypted" type="button" class="btn btn-ghost" disabled>
+        加密导出...
+      </button>
+    </div>
+    <p id="submit-status" class="form-hint submit-status">填写后保存即可生成可导入自动填表的 dossier。</p>
+    <pre id="json-preview" class="code-block" style="display:none;"></pre>
+    <div id="missing-fields" style="display:none;"></div>
+    <div id="warnings" style="display:none;"></div>
+    </form>
+  </div>
+
+  <!-- ========== Screen 2: 自动填表 ========== -->
+  <div class="screen" id="screen-fill" data-screen-label="02 自动填表">
+
+    <!-- Status row -->
+    <div class="section" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+      <div class="page-indicator">
+        <span class="dot-live"></span>
+        <span id="server-status">检测本地服务…</span>
+        <span class="pill pill-neutral" id="application-id">--</span>
+      </div>
+      <span style="font-family:var(--font-mono);font-size:12px;color:var(--muted);">
+        ceac.state.gov &middot; DS-160 &middot; <span id="page-title">--</span>
+      </span>
+    </div>
+
+    <div class="dash-grid">
+      <!-- Card: Import -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <span class="dash-card-title">导入 Dossier</span>
+          <span class="dash-card-badge">Step 1</span>
+        </div>
+        <label class="drop-zone" for="intake-file">
+          <div class="dz-icon">&#x1f4c1;</div>
+          <div class="dz-text">点击选择或拖拽 dossier.json 到此处</div>
+          <div class="dz-code" id="intake-doc-status">未导入</div>
+          <input id="intake-file" type="file" accept="application/json,.json" />
+        </label>
+        <label class="passphrase-field" id="encrypt-passphrase-field" style="display:none;margin-top:12px;">
+          <span class="form-label">加密文件密码</span>
+          <input id="intake-passphrase" class="form-input" type="password" placeholder="输入密码后再导入" autocomplete="new-password" />
+        </label>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="load-intake" class="btn btn-primary">导入 JSON</button>
+        </div>
+      </div>
+
+      <!-- Card: Fill progress -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <span class="dash-card-title">填表进度</span>
+          <span class="dash-card-badge">Step 2</span>
+        </div>
+        <div id="summary" class="summary" style="margin-bottom:16px;"></div>
+        <div id="progress-bar-container" style="display:none">
+          <div class="progress-bar">
+            <div id="progress-bar" class="progress-fill"></div>
+          </div>
+          <div class="progress-stats">
+            <span id="progress-text">0 / 0</span>
+            <button id="cancel-fill-all" class="btn btn-ghost" style="padding:0;">取消</button>
+          </div>
+        </div>
+        <div class="micro-grid">
+          <div class="metric-box"><span>可自动填入</span><strong id="metric-fill">0</strong></div>
+          <div class="metric-box"><span>待确认</span><strong id="metric-review">0</strong></div>
+          <div class="metric-box"><span>缺失</span><strong id="metric-blocked">0</strong></div>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:8px;">
+          <button id="fill-page" class="btn btn-primary">
+            一键填入
+          </button>
+          <button id="fill-continue" class="btn btn-secondary">
+            填完并翻页
+          </button>
+          <button id="fill-all" class="btn btn-secondary">
+            一键填完全部
+          </button>
+        </div>
+      </div>
+
+      <!-- Card: Page fields -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <span class="dash-card-title">当前页面字段</span>
+          <span class="pill pill-success">已匹配</span>
+        </div>
+        <div id="page-nav" class="page-nav" style="margin-bottom:16px;"></div>
+        <table class="log-table">
+          <thead>
+            <tr><th>字段</th><th>映射值</th><th>状态</th></tr>
+          </thead>
+          <tbody id="page-fields-body"></tbody>
+        </table>
+      </div>
+
+      <!-- Card: Quick actions -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <span class="dash-card-title">快捷操作</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button id="sync-page" class="btn btn-secondary" style="justify-content:flex-start;">
+            识别当前 CEAC 页面
+          </button>
+          <button id="clear-checkpoint" class="btn btn-secondary" style="justify-content:flex-start;">
+            清除断点记录
+          </button>
+          <button id="check-drift" class="btn btn-secondary" style="justify-content:flex-start;">
+            检测页面漂移
+          </button>
+        </div>
+      </div>
+
+      <!-- Card: Audit log -->
+      <div class="dash-card full">
+        <div class="dash-card-header">
+          <span class="dash-card-title">操作日志</span>
+          <span class="pill pill-neutral">本地</span>
+        </div>
+        <table class="log-table">
+          <thead>
+            <tr><th>时间</th><th>操作</th><th>页面</th><th>结果</th></tr>
+          </thead>
+          <tbody id="fill-result"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ===== Footer ===== -->
+<footer class="app-footer">
+  非官方工具 &middot; 请在 CEAC 页面提交前人工核对全部内容 &middot; <span>ds160-assistant v0.1.0</span>
+</footer>
+
+<!-- ===== Toast ===== -->
+<div class="toast" id="toast">
+  <span class="toast-icon" id="toastIcon"></span>
+  <span id="toastMsg"></span>
+</div>
+
+<script>
+  /* ===== Screen switching ===== */
+  function switchScreen(name) {
+    document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
+    document.querySelectorAll('.shell-nav button').forEach(function(b) { b.classList.remove('active'); });
+    document.getElementById('screen-' + name).classList.add('active');
+    document.querySelector('[data-screen="' + name + '"]').classList.add('active');
+  }
+
+  /* ===== Dark mode toggle ===== */
+  (function() {
+    var saved = localStorage.getItem('ds160-theme');
+    if (saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+    updateToggle();
+  })();
+
+  function toggleTheme() {
+    var current = document.documentElement.getAttribute('data-theme');
+    var next = current === 'dark' ? '' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('ds160-theme', next || 'light');
+    updateToggle();
+  }
+
+  function updateToggle() {
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    document.getElementById('themeLabel').textContent = isDark ? '亮色' : '暗色';
+  }
+
+  /* ===== Toast ===== */
+  var toastTimer;
+  function showToast(type, msg) {
+    var t = document.getElementById('toast');
+    var icon = document.getElementById('toastIcon');
+    var icons = { success: '\u2714', info: '\u2139', warn: '\u26a0' };
+    icon.textContent = icons[type] || icons.info;
+    document.getElementById('toastMsg').textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function() { t.classList.remove('show'); }, 2500);
+  }
+
+  /* ===== Intake backend integration ===== */
+  (function() {
+    var SERVER_BASE = 'http://127.0.0.1:8765';
+    var form = document.getElementById('manual-form');
+    if (!form) return;
+
+    var status = document.getElementById('submit-status');
+    var preview = document.getElementById('json-preview');
+    var downloadBtn = document.getElementById('download-json');
+    var copyBtn = document.getElementById('copy-json');
+    var encryptedBtn = document.getElementById('download-encrypted');
+    var passphraseInput = document.getElementById('encrypt-passphrase');
+    var latestJson = '';
+    var draftKey = 'ds160_opendesign_intake_draft';
+
+    function field(name) {
+      var el = form.elements.namedItem(name);
+      if (!el) return null;
+      if (el instanceof RadioNodeList) {
+        var checked = Array.from(el).find(function(item) { return item.checked; });
+        return checked ? checked.value : null;
+      }
+      var value = String(el.value || '').trim();
+      return value || null;
+    }
+
+    function boolField(name) {
+      var el = form.elements.namedItem(name);
+      if (!el) return false;
+      if (el instanceof RadioNodeList) return field(name) === 'true';
+      return !!el.checked;
+    }
+
+    function stringArray(name) {
+      var value = field(name);
+      if (!value) return [];
+      return value.split(',').map(function(item) { return item.trim(); }).filter(Boolean);
+    }
+
+    function jsonField(name, fallback) {
+      var value = field(name);
+      if (!value) return fallback;
+      return JSON.parse(value);
+    }
+
+    function setStatus(message) {
+      if (status) status.textContent = message;
+    }
+
+    function buildDossier() {
+      return {
+        case_id: field('case_id'),
+        identity: {
+          surname: field('identity.surname'),
+          given_names: field('identity.given_names'),
+          native_full_name: field('identity.native_full_name'),
+          sex: field('identity.sex'),
+          marital_status: field('identity.marital_status'),
+          date_of_birth: field('identity.date_of_birth'),
+          birth_city: field('identity.birth_city'),
+          birth_province: field('identity.birth_province'),
+          birth_country: field('identity.birth_country'),
+          nationality: field('identity.nationality'),
+          passport_number: field('identity.passport_number'),
+          passport_issuance_country: field('identity.passport_issuance_country'),
+          passport_issue_date: field('identity.passport_issue_date'),
+          passport_expiration_date: field('identity.passport_expiration_date'),
+          passport_book_number: field('identity.passport_book_number'),
+          other_nationality: boolField('identity.other_nationality'),
+          permanent_resident_other_country: boolField('identity.permanent_resident_other_country'),
+          national_id_number: field('identity.national_id_number'),
+          us_social_security_number: field('identity.us_social_security_number'),
+          us_taxpayer_id_number: field('identity.us_taxpayer_id_number'),
+          source_ids: stringArray('identity.source_ids')
+        },
+        travel_plan: {
+          visa_class: field('travel_plan.visa_class'),
+          purpose_notes: field('travel_plan.purpose_notes'),
+          intended_arrival_date: field('travel_plan.intended_arrival_date'),
+          intended_length_of_stay_value: field('travel_plan.intended_length_of_stay_value'),
+          intended_length_of_stay_unit: field('travel_plan.intended_length_of_stay_unit'),
+          payer_name: field('travel_plan.payer_name'),
+          us_contact_name: field('travel_plan.us_contact_name'),
+          us_contact_organization: field('travel_plan.us_contact_organization'),
+          us_contact_address_line1: field('travel_plan.us_contact_address_line1'),
+          us_contact_city: field('travel_plan.us_contact_city'),
+          us_contact_state: field('travel_plan.us_contact_state'),
+          us_contact_postal_code: field('travel_plan.us_contact_postal_code'),
+          us_contact_phone: field('travel_plan.us_contact_phone'),
+          us_contact_email: field('travel_plan.us_contact_email'),
+          source_ids: stringArray('travel_plan.source_ids')
+        },
+        employment_education: {
+          primary_occupation: field('employment_education.primary_occupation'),
+          current_employer_name: field('employment_education.current_employer_name'),
+          current_employer_address: field('employment_education.current_employer_address'),
+          current_employer_address_line2: field('employment_education.current_employer_address_line2'),
+          employer_city: field('employment_education.employer_city'),
+          employer_state: field('employment_education.employer_state'),
+          employer_postal_code: field('employment_education.employer_postal_code'),
+          employer_country: field('employment_education.employer_country'),
+          employer_phone: field('employment_education.employer_phone'),
+          current_employment_start_date: field('employment_education.current_employment_start_date'),
+          current_job_title: field('employment_education.current_job_title'),
+          current_job_duties: field('employment_education.current_job_duties'),
+          current_supervisor_surname: field('employment_education.current_supervisor_surname'),
+          current_supervisor_given_name: field('employment_education.current_supervisor_given_name'),
+          monthly_income_local: field('employment_education.monthly_income_local'),
+          previous_employer_name: field('employment_education.previous_employer_name'),
+          previous_employer_address: field('employment_education.previous_employer_address'),
+          previous_employer_city: field('employment_education.previous_employer_city'),
+          previous_employer_state: field('employment_education.previous_employer_state'),
+          previous_employer_postal_code: field('employment_education.previous_employer_postal_code'),
+          previous_employer_country: field('employment_education.previous_employer_country'),
+          previous_employer_phone: field('employment_education.previous_employer_phone'),
+          previous_job_title: field('employment_education.previous_job_title'),
+          previous_supervisor_surname: field('employment_education.previous_supervisor_surname'),
+          previous_supervisor_given_name: field('employment_education.previous_supervisor_given_name'),
+          previous_employment_start_date: field('employment_education.previous_employment_start_date'),
+          previous_employment_end_date: field('employment_education.previous_employment_end_date'),
+          previous_job_duties: field('employment_education.previous_job_duties'),
+          school_name: field('employment_education.school_name'),
+          school_address_line1: field('employment_education.school_address_line1'),
+          school_city: field('employment_education.school_city'),
+          school_state: field('employment_education.school_state'),
+          school_postal_code: field('employment_education.school_postal_code'),
+          school_country: field('employment_education.school_country'),
+          major_or_course_of_study: field('employment_education.major_or_course_of_study'),
+          school_attendance_start_date: field('employment_education.school_attendance_start_date'),
+          school_attendance_end_date: field('employment_education.school_attendance_end_date'),
+          languages: field('employment_education.languages'),
+          countries_visited: field('employment_education.countries_visited'),
+          clan_or_tribe_name: field('employment_education.clan_or_tribe_name'),
+          organization_memberships: field('employment_education.organization_memberships'),
+          specialized_skills_description: field('employment_education.specialized_skills_description'),
+          military_service_country: field('employment_education.military_service_country'),
+          military_branch: field('employment_education.military_branch'),
+          military_rank: field('employment_education.military_rank'),
+          military_specialty: field('employment_education.military_specialty'),
+          military_service_start_date: field('employment_education.military_service_start_date'),
+          military_service_end_date: field('employment_education.military_service_end_date'),
+          insurgent_organization_explanation: field('employment_education.insurgent_organization_explanation'),
+          source_ids: stringArray('employment_education.source_ids')
+        },
+        family_contacts: {
+          father_full_name: field('family_contacts.father_full_name'),
+          father_date_of_birth: field('family_contacts.father_date_of_birth'),
+          father_in_us: boolField('family_contacts.father_in_us'),
+          mother_full_name: field('family_contacts.mother_full_name'),
+          mother_date_of_birth: field('family_contacts.mother_date_of_birth'),
+          mother_in_us: boolField('family_contacts.mother_in_us'),
+          spouse_full_name: field('family_contacts.spouse_full_name'),
+          spouse_date_of_birth: field('family_contacts.spouse_date_of_birth'),
+          spouse_nationality: field('family_contacts.spouse_nationality'),
+          spouse_birth_city: field('family_contacts.spouse_birth_city'),
+          spouse_birth_country: field('family_contacts.spouse_birth_country'),
+          has_us_immediate_relatives: boolField('family_contacts.has_us_immediate_relatives'),
+          has_us_other_relatives: boolField('family_contacts.has_us_other_relatives'),
+          us_relative_name: field('family_contacts.us_relative_name'),
+          us_relative_status: field('family_contacts.us_relative_status'),
+          source_ids: stringArray('family_contacts.source_ids')
+        },
+        personal_contact: {
+          home_address_line1: field('personal_contact.home_address_line1'),
+          home_address_line2: field('personal_contact.home_address_line2'),
+          home_city: field('personal_contact.home_city'),
+          home_state: field('personal_contact.home_state'),
+          home_postal_code: field('personal_contact.home_postal_code'),
+          home_country: field('personal_contact.home_country'),
+          primary_phone: field('personal_contact.primary_phone'),
+          secondary_phone: field('personal_contact.secondary_phone'),
+          work_phone: field('personal_contact.work_phone'),
+          email: field('personal_contact.email'),
+          social_media_platform: field('personal_contact.social_media_platform'),
+          social_media_handle: field('personal_contact.social_media_handle'),
+          mailing_same_as_home: boolField('personal_contact.mailing_same_as_home'),
+          source_ids: stringArray('personal_contact.source_ids')
+        },
+        previous_travel: {
+          has_previous_us_travel: boolField('previous_travel.has_previous_us_travel'),
+          last_arrival_date: field('previous_travel.last_arrival_date'),
+          last_length_of_stay_value: field('previous_travel.last_length_of_stay_value'),
+          last_length_of_stay_unit: field('previous_travel.last_length_of_stay_unit'),
+          has_previous_us_visa: boolField('previous_travel.has_previous_us_visa'),
+          previous_visa_number: field('previous_travel.previous_visa_number'),
+          previous_visa_issue_date: field('previous_travel.previous_visa_issue_date'),
+          visa_ever_refused: boolField('previous_travel.visa_ever_refused'),
+          visa_ever_lost: boolField('previous_travel.visa_ever_lost'),
+          visa_ever_cancelled: boolField('previous_travel.visa_ever_cancelled'),
+          has_immigrant_petition: boolField('previous_travel.has_immigrant_petition'),
+          has_us_driver_license: boolField('previous_travel.has_us_driver_license'),
+          ten_print_collected: boolField('previous_travel.ten_print_collected'),
+          source_ids: stringArray('previous_travel.source_ids')
+        },
+        security_background: {
+          yes_no_answers: {
+            communicable_disease: boolField('security_background.yes_no_answers.communicable_disease'),
+            arrest_history: boolField('security_background.yes_no_answers.arrested_or_convicted'),
+            physical_or_mental_disorder: boolField('security_background.yes_no_answers.physical_or_mental_disorder'),
+            drug_abuser: boolField('security_background.yes_no_answers.drug_abuser'),
+            arrested_or_convicted: boolField('security_background.yes_no_answers.arrested_or_convicted'),
+            controlled_substances: boolField('security_background.yes_no_answers.controlled_substances'),
+            prostitution_or_vice: boolField('security_background.yes_no_answers.prostitution_or_vice'),
+            money_laundering: boolField('security_background.yes_no_answers.money_laundering'),
+            human_trafficking: boolField('security_background.yes_no_answers.human_trafficking'),
+            assisted_severe_trafficking: boolField('security_background.yes_no_answers.assisted_severe_trafficking'),
+            human_trafficking_related: boolField('security_background.yes_no_answers.human_trafficking_related'),
+            illegal_activity: boolField('security_background.yes_no_answers.illegal_activity'),
+            terrorist_activity: boolField('security_background.yes_no_answers.terrorist_activity'),
+            terrorist_support: boolField('security_background.yes_no_answers.terrorist_support'),
+            terrorist_org: boolField('security_background.yes_no_answers.terrorist_org'),
+            terrorist_rel: boolField('security_background.yes_no_answers.terrorist_rel'),
+            genocide: boolField('security_background.yes_no_answers.genocide'),
+            torture: boolField('security_background.yes_no_answers.torture'),
+            extrajudicial_violence: boolField('security_background.yes_no_answers.extrajudicial_violence'),
+            child_soldier: boolField('security_background.yes_no_answers.child_soldier'),
+            religious_freedom: boolField('security_background.yes_no_answers.religious_freedom'),
+            population_controls: boolField('security_background.yes_no_answers.population_controls'),
+            transplant: boolField('security_background.yes_no_answers.transplant'),
+            removal_hearing: boolField('security_background.yes_no_answers.removal_hearing'),
+            immigration_fraud: boolField('security_background.yes_no_answers.immigration_fraud'),
+            fail_to_attend: boolField('security_background.yes_no_answers.fail_to_attend'),
+            visa_violation: boolField('security_background.yes_no_answers.visa_violation')
+            ,deport: boolField('security_background.yes_no_answers.deport'),
+            child_custody: boolField('security_background.yes_no_answers.child_custody'),
+            voting_violation: boolField('security_background.yes_no_answers.voting_violation'),
+            renounce_exp: boolField('security_background.yes_no_answers.renounce_exp'),
+            attend_public_school_without_reimbursing: boolField('security_background.yes_no_answers.attend_public_school_without_reimbursing')
+          },
+          explanations: jsonField('security_background.explanations', {}),
+          source_ids: stringArray('security_background.source_ids')
+        },
+        evidence_catalog: jsonField('evidence_catalog', [])
+      };
+    }
+
+    function saveDraft() {
+      var data = {};
+      Array.from(form.elements).forEach(function(el) {
+        if (!el.name) return;
+        if (el.type === 'radio') {
+          if (el.checked) data[el.name] = el.value;
+          return;
+        }
+        data[el.name] = el.value || '';
+      });
+      try { localStorage.setItem(draftKey, JSON.stringify(data)); } catch (_) {}
+    }
+
+    function loadDraft() {
+      try {
+        var raw = localStorage.getItem(draftKey);
+        if (!raw) return;
+        var data = JSON.parse(raw);
+        Object.keys(data).forEach(function(name) {
+          var el = form.elements.namedItem(name);
+          if (!el) return;
+          if (el instanceof RadioNodeList) {
+            Array.from(el).forEach(function(item) { item.checked = item.value === data[name]; });
+            return;
+          }
+          el.value = data[name] || '';
+        });
+      } catch (_) {}
+    }
+
+    function downloadJson(text, filename) {
+      var blob = new Blob([text], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function postDossier(payload) {
+      var previewRes = await fetch(SERVER_BASE + '/dossier/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      var previewData = await previewRes.json();
+      if (!previewRes.ok) throw new Error(previewData.detail || '资料校验失败');
+      var dossier = previewData.dossier || payload;
+      var loadRes = await fetch(SERVER_BASE + '/dossier-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dossier)
+      });
+      var loadData = await loadRes.json();
+      if (!loadRes.ok) throw new Error(loadData.detail || '导入后端失败');
+      return dossier;
+    }
+
+    form.addEventListener('input', saveDraft);
+    form.addEventListener('change', saveDraft);
+    form.addEventListener('submit', async function(event) {
+      event.preventDefault();
+      if (!form.reportValidity()) return;
+      setStatus('正在生成并导入后端...');
+      try {
+        var dossier = await postDossier(buildDossier());
+        latestJson = JSON.stringify(dossier, null, 2);
+        if (preview) preview.textContent = latestJson;
+        downloadBtn.disabled = false;
+        copyBtn.disabled = false;
+        encryptedBtn.disabled = false;
+        setStatus('资料已保存并导入后端，可切换到自动填表。');
+        showToast('success', 'Dossier 已导入后端');
+        if (window.fetchBundle) window.fetchBundle();
+      } catch (error) {
+        latestJson = JSON.stringify(buildDossier(), null, 2);
+        if (preview) preview.textContent = latestJson;
+        downloadBtn.disabled = false;
+        copyBtn.disabled = false;
+        encryptedBtn.disabled = false;
+        setStatus(error.message || '后端未连接，已生成本地 JSON。');
+        showToast('warn', '已生成本地 JSON');
+      }
+    });
+
+    downloadBtn.addEventListener('click', function() {
+      if (latestJson) downloadJson(latestJson, 'china-b1b2-dossier.json');
+    });
+    copyBtn.addEventListener('click', async function() {
+      if (!latestJson) return;
+      try {
+        await navigator.clipboard.writeText(latestJson);
+        showToast('success', 'JSON 已复制');
+      } catch (_) {
+        showToast('warn', '当前浏览器不允许复制');
+      }
+    });
+    encryptedBtn.addEventListener('click', async function() {
+      var passphrase = String(passphraseInput.value || '').trim();
+      if (passphrase.length < 8) {
+        setStatus('加密密码至少需要8位。');
+        return;
+      }
+      try {
+        var res = await fetch(SERVER_BASE + '/dossier-document/encrypt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ passphrase: passphrase })
+        });
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.detail || '加密失败');
+        downloadJson(JSON.stringify(data.encrypted_payload, null, 2), 'china-b1b2-dossier.enc.json');
+        setStatus('已导出加密 JSON。');
+      } catch (error) {
+        setStatus(error.message || '加密导出失败，请确认后端服务已启动。');
+      }
+    });
+
+    loadDraft();
+  })();
+</script>
+<script src="/app/ds160-assistant.js"></script>
+
+</body>
+</html>
