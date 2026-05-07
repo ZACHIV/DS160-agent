@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from visa_agent.browser.cdp_client import find_target_websocket_url
+from visa_agent.browser.cdp_client import CDPWebSocket, find_target_websocket_url
 
 
 SAMPLE_SELECTORS: dict[str, list[str]] = {
@@ -78,25 +78,19 @@ def check_page_selectors(page_key: str, cdp_port: int = 9222) -> DriftReport:
                            missing=list(expected), healthy=False)
 
     missing: list[str] = []
-    import websocket
     try:
-        ws = websocket.create_connection(ws_url, timeout=5)
-        for selector in expected:
-            msg = {
-                "id": 1,
-                "method": "Runtime.evaluate",
-                "params": {
-                    "expression": f"document.querySelector({selector!r}) !== null",
-                    "returnByValue": True,
-                },
-            }
-            import json
-            ws.send(json.dumps(msg))
-            response = json.loads(ws.recv())
-            result = response.get("result", {}).get("result", {}).get("value", False)
-            if not result:
-                missing.append(selector)
-        ws.close()
+        with CDPWebSocket(ws_url) as client:
+            for selector in expected:
+                response = client.call(
+                    "Runtime.evaluate",
+                    {
+                        "expression": f"document.querySelector({selector!r}) !== null",
+                        "returnByValue": True,
+                    },
+                )
+                result = response.get("result", {}).get("result", {}).get("value", False)
+                if not result:
+                    missing.append(selector)
     except Exception:
         return DriftReport(page_key=page_key, total_expected=len(expected), found=0,
                            missing=list(expected), healthy=False)

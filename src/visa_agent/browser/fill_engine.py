@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import json
-import time
 from typing import Any
 
-from visa_agent.browser.cdp_client import CDPWebSocket, find_target_websocket_url, list_debug_targets
+from visa_agent.browser.cdp_client import CDPWebSocket, find_target_websocket_url, list_debug_targets  # noqa: F401
 from visa_agent.browser.page_spec import FieldBinding, FillPhase, PageDefinition
 from visa_agent.browser.visible_control import VisibleControlResult, _runtime_eval
 from visa_agent.schema import ApplicantDossier
@@ -223,8 +222,14 @@ def execute_phase(
 
     Returns (filled_field_ids, missing_field_ids).
     """
-    if phase.wait_before_ms > 0:
-        time.sleep(phase.wait_before_ms / 1000.0)
+    # When a phase has a wait_selector, use MutationObserver for deterministic
+    # waiting (the selector appears as a DOM reaction to the prior phase).
+    # Otherwise, a brief pause lets the browser event loop process the prior
+    # interaction — 50 ms is enough for click handlers, not for full DOM changes.
+    if phase.wait_selector:
+        _wait_for_selector_mutation(page_def, phase.wait_selector)
+    elif phase.wait_before_ms > 0:
+        _minimal_sleep_ms(50)
 
     ws_url = _find_page_ws_url(page_def)
     expression = _generate_phase_js(phase, dossier)
@@ -237,7 +242,6 @@ def execute_phase(
             list(payload.get("missing") or []),
         )
     except Exception:
-        # On CDP failure, mark all applicable fields as missing
         applicable = [
             b.field_id for b in phase.fields
             if _should_fill(b, dossier)
@@ -245,25 +249,47 @@ def execute_phase(
         return ([], applicable)
 
 
-def _wait_for_selector(
-    page_def: PageDefinition, selector: str,
-    timeout_s: float = 5.0, interval_s: float = 0.3,
+def _minimal_sleep_ms(ms: int) -> None:
+    """Minimal yield to let the browser event loop process a prior click/change.
+
+    Used only when no specific DOM-change selector is known.  Kept as small
+    as possible — 50 ms is enough for a `click()` handler to fire.
+    """
+    import time
+    time.sleep(ms / 1000.0)
+
+
+def _wait_for_selector_mutation(
+    page_def: PageDefinition, selector: str, timeout_ms: int = 5000,
 ) -> bool:
-    """Wait for a CSS selector to appear in the page DOM."""
-    deadline = time.time() + timeout_s
-    while time.time() < deadline:
-        try:
-            ws_url = _find_page_ws_url(page_def)
-            probe = _runtime_eval(
-                ws_url,
-                f"(()=>!!document.querySelector({json.dumps(selector)}))()",
-            )
-            if probe.get("value") is True:
-                return True
-        except Exception:
-            pass
-        time.sleep(interval_s)
-    return False
+    """Wait for a CSS selector via MutationObserver — no polling.
+
+    Injects a script that watches the live DOM with MutationObserver and
+    resolves a Promise when the target element appears.  Falls back to
+    a timeout so a missing selector never hangs the fill.
+    """
+    expression = (
+        "(() => {"
+        f"const sel = {json.dumps(selector)};"
+        "if (document.querySelector(sel)) return true;"
+        "let _tid;"
+        "return new Promise((resolve) => {"
+        "const observer = new MutationObserver(() => {"
+        "if (document.querySelector(sel)) {"
+        "observer.disconnect(); clearTimeout(_tid); resolve(true);"
+        "}"
+        "});"
+        "observer.observe(document.documentElement, {childList:true,subtree:true});"
+        f"_tid = setTimeout(() => {{ observer.disconnect(); resolve(false); }}, {timeout_ms});"
+        "});"
+        "})()"
+    )
+    try:
+        ws_url = _find_page_ws_url(page_def)
+        result = _runtime_eval(ws_url, expression)
+        return bool(result.get("value", False))
+    except Exception:
+        return False
 
 
 def execute_page(page_def: PageDefinition, dossier: ApplicantDossier) -> VisibleControlResult:
@@ -284,8 +310,8 @@ def execute_page(page_def: PageDefinition, dossier: ApplicantDossier) -> Visible
         if i < len(page_def.phases) - 1:
             for binding in phase.fields:
                 if binding.wait_selector_after:
-                    _wait_for_selector(
-                        page_def, binding.wait_selector_after, timeout_s=5.0
+                    _wait_for_selector_mutation(
+                        page_def, binding.wait_selector_after
                     )
 
     return VisibleControlResult(

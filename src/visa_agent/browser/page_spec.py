@@ -59,7 +59,8 @@ class FillPhase:
     """A group of fields filled in a single CDP round-trip."""
 
     fields: list[FieldBinding]
-    wait_before_ms: int = 0  # Wait before executing this phase
+    wait_before_ms: int = 0  # Minimum wait before phase (used when no wait_selector)
+    wait_selector: str | None = None  # CSS selector to wait for via MutationObserver
     label: str = ""  # Human-readable label for debugging
 
 
