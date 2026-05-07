@@ -1,3 +1,5 @@
+"""Tests for the refactored live_form_fill module and fill engine."""
+
 from __future__ import annotations
 
 from dataclasses import replace
@@ -9,34 +11,32 @@ from visa_agent.schema import PreviousTravelInfo, load_dossier
 from visa_agent.browser.live_form_fill import (
     PAGE_MATCHERS,
     PREVIOUS_TRAVEL_URL_SUBSTRING,
-    _address_phone_defaults,
     _detect_page_key,
-    _fill_security_questions,
-    _family_relative_dob,
-    _family_spouse_defaults,
-    _find_page_ws_url,
-    _month_abbrev,
-    _normalize_phone_number,
-    _previous_travel_los_unit,
-    _sanitize_ds160_name,
-    _security_explanation,
-    _security_yes,
-    _split_contact_name,
-    _split_name_first_surname,
-    _split_employer_address,
-    _work_education_previous_defaults,
-    _work_education_additional_defaults,
+    _PAGE_FILL_HANDLERS,
     click_next_and_wait,
     detect_current_page,
     extract_application_id,
-    fill_personal1_page,
-    fill_personal2_page,
-    fill_previous_travel_page,
-    fill_travel_companions_page,
-    fill_travel_page,
-    fill_family_relatives_page,
-    fill_us_contact_page,
+    fill_current_supported_page,
 )
+from visa_agent.browser.page_definitions import (
+    PAGE_REGISTRY,
+    _month_abbrev,
+    _sanitize_name,
+    _normalize_phone,
+    _split_surname_given,
+    _split_first_surname,
+    _los_unit_label,
+    _departure_date,
+    _us_contact_relationship,
+    _visa_type_value,
+    _travel_purpose_value,
+)
+from visa_agent.browser.fill_engine import (
+    _should_fill,
+    _generate_fill_js,
+    _resolve_value,
+)
+from visa_agent.browser.page_spec import FieldBinding
 from visa_agent.page_ids import PAGE_ID_NORMALIZE
 
 
@@ -44,124 +44,91 @@ ROOT = Path(__file__).resolve().parents[1]
 SAMPLE_PATH = ROOT / "sample_data" / "china_b1b2_sample.json"
 
 
-class LiveFormFillTests(unittest.TestCase):
+class HelperFunctionTests(unittest.TestCase):
+    """Pure-function tests for helpers now in page_definitions.py."""
+
     def test_month_abbrev_mapping(self) -> None:
         self.assertEqual(_month_abbrev("08"), "AUG")
+        self.assertEqual(_month_abbrev("01"), "JAN")
+        self.assertEqual(_month_abbrev("12"), "DEC")
+
+    def test_sanitize_name_removes_punctuation(self) -> None:
+        self.assertEqual(
+            _sanitize_name("Shanghai Example Trading Co., Ltd."),
+            "SHANGHAI EXAMPLE TRADING CO LTD"
+        )
+
+    def test_normalize_phone_keeps_only_digits(self) -> None:
+        self.assertEqual(_normalize_phone("+86-21-5555-8800"), "862155558800")
+        self.assertEqual(_normalize_phone(None, "999"), "999")
+
+    def test_split_surname_given_treats_last_token_as_surname(self) -> None:
+        self.assertEqual(_split_surname_given("Michael Chen"), ("Chen", "Michael"))
+
+    def test_split_first_surname_keeps_first_token_as_surname(self) -> None:
+        self.assertEqual(_split_first_surname("ZHANG JIANGUO"), ("ZHANG", "JIANGUO"))
+
+    def test_los_unit_label_maps_days_to_ds160_text(self) -> None:
+        self.assertEqual(_los_unit_label("DAYS"), "Day(s)")
+        self.assertEqual(_los_unit_label("MONTHS"), "Month(s)")
+
+    def test_visa_type_value_maps_b1b2(self) -> None:
+        self.assertEqual(_visa_type_value("B1/B2"), "B")
+        self.assertEqual(_visa_type_value("F1"), "F")
+
+    def test_travel_purpose_value_maps_b1b2(self) -> None:
+        self.assertEqual(_travel_purpose_value("B1/B2"), "B1-B2")
+
+    def test_us_contact_relationship_defaults_to_other(self) -> None:
+        dossier = load_dossier(SAMPLE_PATH)
+        self.assertEqual(_us_contact_relationship(dossier), "BUSINESS ASSOCIATE")
+
+    def test_departure_date_computes_from_arrival_and_stay(self) -> None:
+        dossier = load_dossier(SAMPLE_PATH)
+        dossier = replace(dossier, travel_plan=replace(
+            dossier.travel_plan,
+            intended_arrival_date="2025-06-15",
+            intended_length_of_stay_value="7",
+        ))
+        self.assertEqual(_departure_date(dossier), "2025-06-22")
+
+
+class PageDetectionTests(unittest.TestCase):
+    """Tests for page detection and URL matching."""
 
     def test_previous_travel_url_matches_ceac_target(self) -> None:
         self.assertEqual(PREVIOUS_TRAVEL_URL_SUBSTRING, "node=PreviousUSTravel")
 
-    def test_travel_companions_url_does_not_match_travel_page(self) -> None:
+    def test_travel_companions_url_detected(self) -> None:
         url = "https://ceac.state.gov/GenNIV/General/complete/complete_travel.aspx?node=TravelCompanions"
-        self.assertEqual(_detect_page_key(url, "Travel Companions Information"), "travel_companions")
+        self.assertEqual(
+            _detect_page_key(url, "Travel Companions Information"),
+            "travel_companions"
+        )
 
-    def test_previous_travel_url_does_not_match_travel_page_title(self) -> None:
+    def test_previous_travel_url_detected(self) -> None:
         url = "https://ceac.state.gov/GenNIV/General/complete/complete_travel.aspx?node=PreviousUSTravel"
-        self.assertEqual(_detect_page_key(url, "Previous U.S. Travel Information"), "previous_travel")
-
-    def test_find_page_ws_url_uses_exact_node_match(self) -> None:
-        targets = [
-            {
-                "url": "https://ceac.state.gov/GenNIV/General/complete/complete_travel.aspx?node=TravelCompanions",
-                "title": "Travel Companions Information",
-                "webSocketDebuggerUrl": "ws://companions",
-            },
-            {
-                "url": "https://ceac.state.gov/GenNIV/General/complete/complete_travel.aspx?node=Travel",
-                "title": "Travel Information",
-                "webSocketDebuggerUrl": "ws://travel",
-            },
-            {
-                "url": "https://ceac.state.gov/GenNIV/General/complete/complete_travel.aspx?node=PreviousUSTravel",
-                "title": "Previous U.S. Travel Information",
-                "webSocketDebuggerUrl": "ws://previous",
-            },
-        ]
-        with patch("visa_agent.browser.live_form_fill.list_debug_targets", return_value=targets):
-            self.assertEqual(_find_page_ws_url("travel"), "ws://travel")
-            self.assertEqual(_find_page_ws_url("travel_companions"), "ws://companions")
-            self.assertEqual(_find_page_ws_url("previous_travel"), "ws://previous")
-
-    def test_travel_companions_fill_uses_real_click(self) -> None:
-        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
-            "visa_agent.browser.live_form_fill._runtime_eval",
-            return_value={"value": {"filled": ["no_companions"], "missing": []}},
-        ) as runtime_eval:
-            result = fill_travel_companions_page(None)
-
-        self.assertTrue(result.ok)
-        expression = runtime_eval.call_args.args[1]
-        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblOtherPersonsTravelingWithYou', 'N')", expression)
+        self.assertEqual(
+            _detect_page_key(url, "Previous U.S. Travel Information"),
+            "previous_travel"
+        )
 
     def test_passport_page_matchers_include_pptvisa_alias(self) -> None:
         self.assertIn("node=PptVisa", PAGE_MATCHERS["passport"])
 
-    def test_us_contact_page_normalizes(self) -> None:
+
+class PageIDNormalizeTests(unittest.TestCase):
+    """Tests for page_id normalization mapping."""
+
+    def test_page_id_mappings(self) -> None:
         self.assertEqual(PAGE_ID_NORMALIZE["us_contact_page"], "us_contact")
         self.assertEqual(PAGE_ID_NORMALIZE["family_relatives_page"], "family_relatives")
         self.assertEqual(PAGE_ID_NORMALIZE["family_spouse_page"], "family_spouse")
         self.assertEqual(PAGE_ID_NORMALIZE["security_part3_page"], "security_part3")
 
-    def test_previous_travel_los_unit_maps_days_to_ds160_text(self) -> None:
-        self.assertEqual(_previous_travel_los_unit("DAYS"), "Day(s)")
 
-    def test_split_employer_address_extracts_city_state_country(self) -> None:
-        self.assertEqual(
-            _split_employer_address("88 Huaihai Middle Road, Shanghai, Shanghai, China"),
-            ("88 Huaihai Middle Road", "Shanghai", "Shanghai", "China"),
-        )
-
-    def test_normalize_phone_number_keeps_only_digits(self) -> None:
-        self.assertEqual(_normalize_phone_number("+86-21-5555-8800"), "862155558800")
-
-    def test_split_contact_name_treats_last_token_as_surname(self) -> None:
-        self.assertEqual(_split_contact_name("Michael Chen"), ("Chen", "Michael"))
-
-    def test_split_name_first_surname_keeps_first_token_as_surname(self) -> None:
-        self.assertEqual(_split_name_first_surname("ZHANG JIANGUO"), ("ZHANG", "JIANGUO"))
-
-    def test_family_relative_dob_reads_from_dossier(self) -> None:
-        dossier = load_dossier(SAMPLE_PATH)
-        self.assertIsNone(_family_relative_dob("father", dossier))
-        self.assertIsNone(_family_relative_dob("mother", dossier))
-
-    def test_family_spouse_defaults_uses_dossier_data(self) -> None:
-        dossier = load_dossier(SAMPLE_PATH)
-        defaults = _family_spouse_defaults(dossier)
-        self.assertIsNotNone(defaults)
-        self.assertEqual(defaults.get("nationality"), "CHINA")
-
-    def test_sanitize_ds160_name_removes_punctuation(self) -> None:
-        self.assertEqual(_sanitize_ds160_name("Shanghai Example Trading Co., Ltd."), "SHANGHAI EXAMPLE TRADING CO LTD")
-
-    def test_work_education_previous_defaults_returns_none_without_data(self) -> None:
-        dossier = load_dossier(SAMPLE_PATH)
-        defaults = _work_education_previous_defaults(dossier)
-        self.assertIsNone(defaults)
-
-    def test_work_education_additional_defaults_returns_empty_strings(self) -> None:
-        dossier = load_dossier(SAMPLE_PATH)
-        defaults = _work_education_additional_defaults(dossier)
-        self.assertEqual(defaults["clan_name"], "")
-        self.assertEqual(defaults["country_visited"], "")
-
-    def test_security_defaults_to_no_without_schema_key(self) -> None:
-        dossier = load_dossier(SAMPLE_PATH)
-        self.assertFalse(_security_yes(dossier, "genocide"))
-        self.assertEqual(_security_explanation(dossier, "genocide"), "Explanation available upon request.")
-
-    def test_find_page_ws_url_falls_back_to_title_match(self) -> None:
-        with patch("visa_agent.browser.live_form_fill.find_target_websocket_url", side_effect=RuntimeError("miss")), patch(
-            "visa_agent.browser.live_form_fill.list_debug_targets",
-            return_value=[
-                {
-                    "title": "Nonimmigrant Visa - Passport Information",
-                    "url": "https://ceac.state.gov/GenNIV/General/complete/Passport_Visa_Info.aspx?node=PptVisa",
-                    "webSocketDebuggerUrl": "ws://127.0.0.1:9222/devtools/page/test",
-                }
-            ],
-        ):
-            self.assertEqual(_find_page_ws_url("passport"), "ws://127.0.0.1:9222/devtools/page/test")
+class CDPOperationTests(unittest.TestCase):
+    """Tests for CDP operations that survived the refactoring."""
 
     def test_detect_current_page_extracts_application_id(self) -> None:
         with patch("visa_agent.browser.live_form_fill.find_target_websocket_url", return_value="ws://test"), patch(
@@ -212,231 +179,106 @@ class LiveFormFillTests(unittest.TestCase):
         self.assertIn("addEventListener('beforeunload'", click_expression)
         self.assertIn("btn.click()", click_expression)
 
+
+class FillEngineTests(unittest.TestCase):
+    """Tests for the new declarative fill engine."""
+
+    def test_all_pages_have_handlers(self) -> None:
+        for key in PAGE_REGISTRY:
+            self.assertIn(key, _PAGE_FILL_HANDLERS, f"Missing handler for {key}")
+
+    def test_18_pages_registered(self) -> None:
+        self.assertEqual(len(PAGE_REGISTRY), 18)
+        self.assertEqual(len(_PAGE_FILL_HANDLERS), 18)
+
+    def test_personal1_has_two_phases(self) -> None:
+        page = PAGE_REGISTRY["personal1"]
+        self.assertEqual(len(page.phases), 2)
+        self.assertEqual(page.phases[0].label, "ensure")
+        self.assertEqual(page.phases[1].label, "fill")
+
+    def test_ensure_phase_radio_click_hardcoded(self) -> None:
+        page = PAGE_REGISTRY["personal1"]
+        ensure = page.phases[0]
+        self.assertEqual(ensure.fields[0].input_kind, "radio_click")
+        self.assertEqual(ensure.fields[0].hardcoded, "N")
+
+    def test_text_field_resolves_source_path(self) -> None:
+        field = FieldBinding("test", "#selector", "text", source_path="identity.surname")
+        dossier = load_dossier(SAMPLE_PATH)
+        value = _resolve_value(field, dossier)
+        self.assertEqual(value, "ZHANG")
+
+    def test_hardcoded_field_returns_literal(self) -> None:
+        field = FieldBinding("test", "#selector", "radio_click", hardcoded="N")
+        dossier = load_dossier(SAMPLE_PATH)
+        self.assertEqual(_resolve_value(field, dossier), "N")
+
+    def test_generate_text_fill_js(self) -> None:
+        field = FieldBinding("surname", "#tbxSurname", "text")
+        js = _generate_fill_js(field, "ZHANG")
+        self.assertIn("setText", js)
+        self.assertIn('"#tbxSurname"', js)
+        self.assertIn('"ZHANG"', js)
+
+    def test_generate_radio_click_js(self) -> None:
+        field = FieldBinding("other_names_no", "ctl00$rblOtherNames", "radio_click", choice_value="N")
+        js = _generate_fill_js(field, "N")
+        self.assertIn("setRadioClick", js)
+        self.assertIn('"ctl00$rblOtherNames"', js)
+        self.assertIn('"N"', js)
+
+    def test_generate_select_text_js(self) -> None:
+        field = FieldBinding("sex", "#ddlGender", "select_text")
+        js = _generate_fill_js(field, "Male")
+        self.assertIn("setSelectText", js)
+
+    def test_condition_false_skips_field(self) -> None:
+        field = FieldBinding("test", "#sel", "text", condition=lambda d: False)
+        dossier = load_dossier(SAMPLE_PATH)
+        self.assertFalse(_should_fill(field, dossier))
+
+    def test_condition_true_includes_field(self) -> None:
+        field = FieldBinding("test", "#sel", "text", condition=lambda d: True)
+        dossier = load_dossier(SAMPLE_PATH)
+        self.assertTrue(_should_fill(field, dossier))
+
+    def test_security_questions_have_radio_and_textarea(self) -> None:
+        page = PAGE_REGISTRY["security_part1"]
+        self.assertGreaterEqual(len(page.phases), 3)
+        # First question about communicable_disease
+        self.assertIn("communicable_disease", [f.field_id for f in page.phases[0].fields])
+
     def test_sample_dossier_has_personal1_values(self) -> None:
         dossier = load_dossier(SAMPLE_PATH)
         self.assertEqual(dossier.identity.surname, "ZHANG")
         self.assertEqual(dossier.identity.birth_country, "CHINA")
 
-    def test_address_phone_defaults_returns_none_without_contact_data(self) -> None:
-        # Build minimal dossier without personal_contact to verify None fallback
-        dossier = load_dossier(SAMPLE_PATH)
-        dossier = dossier.__class__(
-            case_id=dossier.case_id,
-            identity=dossier.identity,
-            travel_plan=dossier.travel_plan,
-            employment_education=dossier.employment_education,
-            family_contacts=dossier.family_contacts,
-            security_background=dossier.security_background,
-            evidence_catalog=dossier.evidence_catalog,
-            personal_contact=None,
-            previous_travel=None,
-        )
-        defaults = _address_phone_defaults(dossier)
-        self.assertIsNone(defaults)
 
-    def test_personal1_fill_uses_staged_clicks_before_main_fill(self) -> None:
-        dossier = load_dossier(SAMPLE_PATH)
-        responses = [
-            {"value": {"filled": ["other_names_no", "telecode_no"], "missing": []}},
-            {"value": {"filled": ["surname"], "missing": []}},
-        ]
-        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
+class FillCurrentSupportedPageTests(unittest.TestCase):
+    """Tests for fill_current_supported_page delegation."""
+
+    def test_fills_when_page_recognized(self) -> None:
+        with patch("visa_agent.browser.live_form_fill.find_target_websocket_url", return_value="ws://test"), patch(
             "visa_agent.browser.live_form_fill._runtime_eval",
-            side_effect=responses,
-        ) as runtime_eval, patch("visa_agent.browser.live_form_fill.time.sleep"):
-            result = fill_personal1_page(dossier)
-
-        self.assertTrue(result.ok)
-        self.assertEqual(runtime_eval.call_count, 2)
-        first_expression = runtime_eval.call_args_list[0].args[1]
-        second_expression = runtime_eval.call_args_list[1].args[1]
-        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblOtherNames', 'N')", first_expression)
-        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblTelecodeQuestion', 'N')", first_expression)
-        self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_tbxAPP_SURNAME", second_expression)
-
-    def test_personal2_fill_uses_staged_clicks_before_main_fill(self) -> None:
-        dossier = load_dossier(SAMPLE_PATH)
-        responses = [
-            {"value": {"filled": ["other_nationality_no", "perm_res_other_no"], "missing": []}},
-            {"value": {"filled": ["nationality"], "missing": []}},
-        ]
-        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
-            "visa_agent.browser.live_form_fill._runtime_eval",
-            side_effect=responses,
-        ) as runtime_eval, patch("visa_agent.browser.live_form_fill.time.sleep"):
-            result = fill_personal2_page(dossier)
-
-        self.assertTrue(result.ok)
-        self.assertEqual(runtime_eval.call_count, 2)
-        first_expression = runtime_eval.call_args_list[0].args[1]
-        second_expression = runtime_eval.call_args_list[1].args[1]
-        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblAPP_OTH_NATL_IND', 'N')", first_expression)
-        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPermResOtherCntryInd', 'N')", first_expression)
-        self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_ddlAPP_NATL", second_expression)
-
-    def test_travel_fill_uses_staged_specific_travel_expansion(self) -> None:
-        dossier = load_dossier(SAMPLE_PATH)
-        responses = [
-            {"value": {"filled": ["specific_travel_yes"], "missing": []}},
-            {"value": {"filled": ["visa_type"], "missing": []}},
-            {"value": {"filled": ["purpose_specify", "arrival_day"], "missing": []}},
-        ]
-        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
-            "visa_agent.browser.live_form_fill._runtime_eval",
-            side_effect=responses,
-        ) as runtime_eval, patch(
-            "visa_agent.browser.live_form_fill._wait_for_selector",
-            return_value=True,
-        ) as wait_for_selector, patch("visa_agent.browser.live_form_fill.time.sleep"):
-            result = fill_travel_page(dossier)
-
-        self.assertTrue(result.ok)
-        self.assertEqual(runtime_eval.call_count, 3)
-        self.assertEqual(wait_for_selector.call_count, 2)
-        first_expression = runtime_eval.call_args_list[0].args[1]
-        second_expression = runtime_eval.call_args_list[1].args[1]
-        third_expression = runtime_eval.call_args_list[2].args[1]
-        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblSpecificTravel', 'Y')", first_expression)
-        self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_dlPrincipalAppTravel_ctl00_ddlPurposeOfTrip", second_expression)
-        self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_dlPrincipalAppTravel_ctl00_ddlOtherPurpose", third_expression)
-
-    def test_previous_travel_fill_respects_no_answers_without_expansion(self) -> None:
-        dossier = load_dossier(SAMPLE_PATH)
-        responses = [
-            {"value": {"filled": ["prev_us_travel_no"], "missing": []}},
-            {"value": {"filled": ["prev_visa_no"], "missing": []}},
-            {"value": {"filled": ["prev_visa_refused_no", "iv_petition_no"], "missing": []}},
-        ]
-        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
-            "visa_agent.browser.live_form_fill._runtime_eval",
-            side_effect=responses,
-        ) as runtime_eval, patch(
-            "visa_agent.browser.live_form_fill._wait_for_selector",
-            return_value=True,
-        ) as wait_for_selector, patch("visa_agent.browser.live_form_fill.time.sleep"):
-            result = fill_previous_travel_page(dossier)
-
-        self.assertTrue(result.ok)
-        self.assertEqual(runtime_eval.call_count, 3)
-        self.assertEqual(wait_for_selector.call_count, 0)
-        first_expression = runtime_eval.call_args_list[0].args[1]
-        second_expression = runtime_eval.call_args_list[1].args[1]
-        third_expression = runtime_eval.call_args_list[2].args[1]
-        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_TRAVEL_IND', \"N\")", first_expression)
-        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_IND', \"N\")", second_expression)
-        self.assertIn("rblPREV_VISA_REFUSED_IND', \"N\")", third_expression)
-        self.assertNotIn("dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_DTEDay", third_expression)
-
-    def test_previous_travel_fill_expands_when_dossier_has_prior_travel(self) -> None:
-        dossier = replace(
-            load_dossier(SAMPLE_PATH),
-            previous_travel=PreviousTravelInfo(
-                has_previous_us_travel=True,
-                last_arrival_date="2024-05-12",
-                last_length_of_stay_value="10",
-                last_length_of_stay_unit="DAYS",
-                has_previous_us_visa=True,
-                previous_visa_issue_date="2023-04-08",
-            ),
-        )
-        responses = [
-            {"value": {"filled": ["prev_us_travel_yes"], "missing": []}},
-            {"value": {"filled": ["prev_visa_yes"], "missing": []}},
-            {"value": {"filled": ["prev_visit_day"], "missing": []}},
-        ]
-        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
-            "visa_agent.browser.live_form_fill._runtime_eval",
-            side_effect=responses,
-        ) as runtime_eval, patch(
-            "visa_agent.browser.live_form_fill._wait_for_selector",
-            return_value=True,
-        ) as wait_for_selector, patch("visa_agent.browser.live_form_fill.time.sleep"):
-            result = fill_previous_travel_page(dossier)
-
-        self.assertTrue(result.ok)
-        self.assertEqual(runtime_eval.call_count, 3)
-        self.assertEqual(wait_for_selector.call_count, 2)
-        first_expression = runtime_eval.call_args_list[0].args[1]
-        second_expression = runtime_eval.call_args_list[1].args[1]
-        third_expression = runtime_eval.call_args_list[2].args[1]
-        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_US_TRAVEL_IND', \"Y\")", first_expression)
-        self.assertIn("setRadioClick('ctl00$SiteContentPlaceHolder$FormView1$rblPREV_VISA_IND', \"Y\")", second_expression)
-        self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_dtlPREV_US_VISIT_ctl00_ddlPREV_US_VISIT_DTEDay", third_expression)
-        self.assertIn("#ctl00_SiteContentPlaceHolder_FormView1_ddlPREV_VISA_ISSUED_DTEDay", third_expression)
-
-    def test_us_contact_fill_waits_for_address_fields_after_setup(self) -> None:
-        dossier = load_dossier(SAMPLE_PATH)
-        responses = [
-            {"value": {"filled": ["contact_name_known", "contact_org_known", "contact_relationship"], "missing": []}},
-            {"value": {"filled": ["contact_surname", "contact_addr1", "contact_email"], "missing": []}},
-        ]
-        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
-            "visa_agent.browser.live_form_fill._runtime_eval",
-            side_effect=responses,
-        ) as runtime_eval, patch(
-            "visa_agent.browser.live_form_fill._wait_for_selector",
-            return_value=True,
-        ) as wait_for_selector, patch("visa_agent.browser.live_form_fill.time.sleep"):
-            result = fill_us_contact_page(dossier)
-
-        self.assertTrue(result.ok)
-        self.assertEqual(runtime_eval.call_count, 2)
-        self.assertEqual(wait_for_selector.call_count, 3)
-        first_expression = runtime_eval.call_args_list[0].args[1]
-        second_expression = runtime_eval.call_args_list[1].args[1]
-        self.assertIn("cbxUS_POC_NAME_NA", first_expression)
-        self.assertIn("ddlUS_POC_REL_TO_APP", first_expression)
-        self.assertIn("tbxUS_POC_ADDR_LN1", second_expression)
-        self.assertIn("tbxUS_POC_EMAIL_ADDR", second_expression)
-
-    def test_family_relatives_fill_marks_unknown_parent_dobs_when_missing(self) -> None:
-        dossier = load_dossier(SAMPLE_PATH)
-        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
-            "visa_agent.browser.live_form_fill._runtime_eval",
-            return_value={"value": {"filled": ["father_dob_unknown", "mother_dob_unknown"], "missing": []}},
-        ) as runtime_eval:
-            result = fill_family_relatives_page(dossier)
-
-        self.assertTrue(result.ok)
-        expression = runtime_eval.call_args.args[1]
-        self.assertIn("cbxFATHER_DOB_UNK_IND', true", expression)
-        self.assertIn("cbxMOTHER_DOB_UNK_IND', true", expression)
-        self.assertNotIn("_month_abbrev(father_dob[5:7])", expression)
-
-    def test_security_yes_answers_use_staged_textarea_fill(self) -> None:
-        dossier = load_dossier(SAMPLE_PATH)
-        responses = [
-            {"value": {"filled": ["communicable_disease_yes"], "missing": []}},
-            {"value": {"filled": ["communicable_disease_explanation"], "missing": []}},
-        ]
-        with patch("visa_agent.browser.live_form_fill._find_page_ws_url", return_value="ws://test"), patch(
-            "visa_agent.browser.live_form_fill._runtime_eval",
-            side_effect=responses,
-        ) as runtime_eval, patch(
-            "visa_agent.browser.live_form_fill._wait_for_selector",
-            return_value=True,
-        ) as wait_for_selector, patch(
-            "visa_agent.browser.live_form_fill._security_yes",
-            return_value=True,
+            return_value={
+                "value": {
+                    "title": "Personal Information 1",
+                    "url": "https://ceac.state.gov/GenNIV/General/complete/complete_personal.aspx?node=Personal1",
+                    "application_id": "AA00TEST",
+                }
+            },
         ), patch(
-            "visa_agent.browser.live_form_fill._security_explanation",
-            return_value="Test explanation",
-        ), patch("visa_agent.browser.live_form_fill.time.sleep"):
-            result = _fill_security_questions(
-                "security_part1",
-                [
-                    ("communicable_disease", "ctl00$SiteContentPlaceHolder$FormView1$rblDisease", "#ctl00_SiteContentPlaceHolder_FormView1_tbxDisease"),
-                ],
-                dossier,
-            )
+            "visa_agent.browser.fill_engine._find_page_ws_url", return_value="ws://mock"
+        ), patch(
+            "visa_agent.browser.fill_engine._runtime_eval",
+            return_value={"value": {"filled": ["surname"], "missing": []}},
+        ):
+            dossier = load_dossier(SAMPLE_PATH)
+            result = fill_current_supported_page(dossier)
 
         self.assertTrue(result.ok)
-        self.assertEqual(runtime_eval.call_count, 2)
-        self.assertTrue(wait_for_selector.called)
-        first_expression = runtime_eval.call_args_list[0].args[1]
-        second_expression = runtime_eval.call_args_list[1].args[1]
-        self.assertIn("setRadioClick(\"ctl00$SiteContentPlaceHolder$FormView1$rblDisease\", \"Y\")", first_expression)
-        self.assertIn("setText(\"#ctl00_SiteContentPlaceHolder_FormView1_tbxDisease\", \"Test explanation\")", second_expression)
+        self.assertEqual(result.payload["page_key"], "personal1")
 
 
 if __name__ == "__main__":

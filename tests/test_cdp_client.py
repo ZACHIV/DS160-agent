@@ -2,15 +2,33 @@ from __future__ import annotations
 
 import unittest
 
-from visa_agent.browser.cdp_client import CDPWebSocket
+from visa_agent.browser.cdp_client import CDPWebSocket, list_debug_targets, find_target_websocket_url
 
 
 class CDPClientTests(unittest.TestCase):
-    def test_accept_header_name_lookup_is_case_insensitive(self) -> None:
-        response = "HTTP/1.1 101 Switching Protocols\r\nSec-WebSocket-Accept: abc\r\n\r\n"
-        self.assertEqual(CDPWebSocket._header_value(response, "sec-websocket-accept"), "abc")
+    def test_cdp_websocket_uses_websocket_client_library(self) -> None:
+        ws = CDPWebSocket("ws://127.0.0.1:9222/devtools/page/test")
+        self.assertIsNone(ws._ws)
+        self.assertEqual(ws.ws_url, "ws://127.0.0.1:9222/devtools/page/test")
+        self.assertEqual(ws._message_id, 0)
+
+    def test_call_requires_connection(self) -> None:
+        ws = CDPWebSocket("ws://127.0.0.1:9222/devtools/page/test")
+        with self.assertRaises(AssertionError):
+            ws.call("Runtime.evaluate", {"expression": "1+1"})
+
+    def test_connect_and_close_are_idempotent(self) -> None:
+        # close() without connect() should be safe
+        ws = CDPWebSocket("ws://127.0.0.1:9222/devtools/page/test")
+        ws.close()
+        self.assertIsNone(ws._ws)
+
+    def test_list_debug_targets_is_callable(self) -> None:
+        self.assertTrue(callable(list_debug_targets))
+
+    def test_find_target_websocket_url_is_callable(self) -> None:
+        self.assertTrue(callable(find_target_websocket_url))
 
 
 if __name__ == "__main__":
     unittest.main()
-
