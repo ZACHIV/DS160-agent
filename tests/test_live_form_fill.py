@@ -216,21 +216,21 @@ class FillEngineTests(unittest.TestCase):
 
     def test_generate_text_fill_js(self) -> None:
         field = FieldBinding("surname", "#tbxSurname", "text")
-        js = _generate_fill_js(field, "ZHANG", "surname")
+        js = _generate_fill_js(field, "ZHANG")
         self.assertIn("setText", js)
         self.assertIn('"#tbxSurname"', js)
         self.assertIn('"ZHANG"', js)
 
     def test_generate_radio_click_js(self) -> None:
         field = FieldBinding("other_names_no", "ctl00$rblOtherNames", "radio_click", choice_value="N")
-        js = _generate_fill_js(field, "N", "other_names_no")
+        js = _generate_fill_js(field, "N")
         self.assertIn("setRadioClick", js)
         self.assertIn('"ctl00$rblOtherNames"', js)
         self.assertIn('"N"', js)
 
     def test_generate_select_text_js(self) -> None:
         field = FieldBinding("sex", "#ddlGender", "select_text")
-        js = _generate_fill_js(field, "Male", "sex")
+        js = _generate_fill_js(field, "Male")
         self.assertIn("setSelectText", js)
 
     def test_condition_false_skips_field(self) -> None:

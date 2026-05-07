@@ -106,7 +106,7 @@ def _should_fill(field: FieldBinding, dossier: ApplicantDossier) -> bool:
     return True
 
 
-def _generate_fill_js(binding: FieldBinding, value: Any, var_name: str) -> str:
+def _generate_fill_js(binding: FieldBinding, value: Any) -> str:
     """Generate a single JS fill expression for a field binding.
 
     The generated code uses ok(name)/miss(name) to record the result.

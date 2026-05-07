@@ -4,16 +4,6 @@ import argparse
 import json
 from pathlib import Path
 
-from visa_agent.browser.driver_adapter import (
-    build_agent_browser_commands,
-    render_agent_browser_script,
-    render_driver_manifest_json,
-)
-from visa_agent.browser.playwright_adapter import (
-    build_playwright_commands,
-    render_playwright_manifest_json,
-    render_playwright_script,
-)
 from visa_agent.browser.visible_browser import (
     build_visible_ceac_commands,
     build_visible_browser_status_commands,
@@ -40,7 +30,6 @@ from visa_agent.browser.plan import (
     compile_browser_execution_plan,
     render_browser_execution_plan_json,
 )
-from visa_agent.browser.runtime import build_runtime_plan, render_runtime_plan_json
 from visa_agent.draft_bundle import build_draft_bundle, export_draft_bundle_file
 from visa_agent.encryption import (
     is_encrypted_dossier,
@@ -68,11 +57,6 @@ def main() -> int:
             "mapping",
             "plan",
             "browser-plan",
-            "runtime-plan",
-            "driver-manifest",
-            "agent-browser-script",
-            "playwright-manifest",
-            "playwright-script",
             "visible-browser-manifest",
             "visible-browser-script",
             "visible-browser-status-manifest",
@@ -192,24 +176,6 @@ def main() -> int:
     browser_plan = compile_browser_execution_plan(execution_plan)
     if args.mode == "browser-plan":
         print(render_browser_execution_plan_json(browser_plan))
-        return 0
-    runtime_plan = build_runtime_plan(browser_plan)
-    if args.mode == "runtime-plan":
-        print(render_runtime_plan_json(runtime_plan))
-        return 0
-    driver_commands = build_agent_browser_commands(runtime_plan, args.start_url)
-    if args.mode == "driver-manifest":
-        print(render_driver_manifest_json(driver_commands))
-        return 0
-    if args.mode == "agent-browser-script":
-        print(render_agent_browser_script(driver_commands))
-        return 0
-    playwright_commands = build_playwright_commands(runtime_plan, args.start_url)
-    if args.mode == "playwright-manifest":
-        print(render_playwright_manifest_json(playwright_commands))
-        return 0
-    if args.mode == "playwright-script":
-        print(render_playwright_script(playwright_commands))
         return 0
     profile_dir = str(Path(args.visible_browser_profile).resolve())
     visible_commands = build_visible_ceac_commands(
