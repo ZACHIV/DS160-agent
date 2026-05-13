@@ -21,8 +21,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+try:
+    from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+except ModuleNotFoundError:  # cryptography versions before Argon2id support
+    Argon2id = None  # type: ignore[assignment]
 
 
 ENCRYPTED_FORMAT_MARKER = "ds160-encrypted-v1"
@@ -32,6 +38,7 @@ ARGON_MEMORY_COST = 65536  # 64 MB
 ARGON_TIME_COST = 3
 ARGON_PARALLELISM = 4
 ARGON_KEY_LENGTH = 32  # 256 bits for AES-256
+PBKDF2_ITERATIONS = 100000
 GCM_NONCE_LENGTH = 12  # 96 bits, standard for GCM
 
 
@@ -43,22 +50,45 @@ class EncryptedBundle:
     ciphertext_b64: str
 
 
-def derive_key(passphrase: str, salt: bytes) -> bytes:
-    """Derive a 256-bit key from a passphrase using Argon2id."""
-    kdf = Argon2id(
-        salt=salt,
-        length=ARGON_KEY_LENGTH,
-        memory_cost=ARGON_MEMORY_COST,
-        iterations=ARGON_TIME_COST,
-        lanes=ARGON_PARALLELISM,
-    )
-    return kdf.derive(passphrase.encode("utf-8"))
+def _argon2_available() -> bool:
+    return Argon2id is not None
+
+
+def derive_key(passphrase: str, salt: bytes, kdf_name: str | None = None) -> bytes:
+    """Derive a 256-bit key from a passphrase.
+
+    Argon2id is preferred when the installed cryptography build supports it.
+    Older environments fall back to PBKDF2 so importing this module does not
+    prevent the local server from starting.
+    """
+    selected = kdf_name or ("argon2id" if _argon2_available() else "pbkdf2-sha256")
+    if selected == "argon2id":
+        if Argon2id is None:
+            raise RuntimeError("This encrypted dossier requires Argon2id, but this cryptography version does not provide it.")
+        kdf = Argon2id(
+            salt=salt,
+            length=ARGON_KEY_LENGTH,
+            memory_cost=ARGON_MEMORY_COST,
+            iterations=ARGON_TIME_COST,
+            lanes=ARGON_PARALLELISM,
+        )
+        return kdf.derive(passphrase.encode("utf-8"))
+    if selected == "pbkdf2-sha256":
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=ARGON_KEY_LENGTH,
+            salt=salt,
+            iterations=PBKDF2_ITERATIONS,
+        )
+        return kdf.derive(passphrase.encode("utf-8"))
+    raise ValueError(f"Unsupported dossier KDF: {selected}")
 
 
 def encrypt_dossier_json(plaintext_json: str, passphrase: str) -> str:
     """Encrypt a dossier JSON string. Returns an encrypted JSON string."""
     salt = secrets.token_bytes(16)
-    key = derive_key(passphrase, salt)
+    kdf_name = "argon2id" if _argon2_available() else "pbkdf2-sha256"
+    key = derive_key(passphrase, salt, kdf_name)
     nonce = secrets.token_bytes(GCM_NONCE_LENGTH)
     plaintext = plaintext_json.encode("utf-8")
 
@@ -67,6 +97,7 @@ def encrypt_dossier_json(plaintext_json: str, passphrase: str) -> str:
 
     payload = {
         "format": ENCRYPTED_FORMAT_MARKER,
+        "kdf": kdf_name,
         "salt_b64": base64.b64encode(salt).decode("ascii"),
         "nonce_b64": base64.b64encode(nonce).decode("ascii"),
         "ciphertext_b64": base64.b64encode(ciphertext).decode("ascii"),
@@ -85,7 +116,7 @@ def decrypt_dossier_json(encrypted_json: str, passphrase: str) -> str:
     nonce = base64.b64decode(payload["nonce_b64"])
     ciphertext = base64.b64decode(payload["ciphertext_b64"])
 
-    key = derive_key(passphrase, salt)
+    key = derive_key(passphrase, salt, payload.get("kdf") or "argon2id")
     aesgcm = AESGCM(key)
     plaintext = aesgcm.decrypt(nonce, ciphertext, None)
     return plaintext.decode("utf-8")
