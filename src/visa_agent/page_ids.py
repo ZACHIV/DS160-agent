@@ -29,7 +29,7 @@ PAGE_ID_NORMALIZE = {
 # Reverse mapping: live_form_fill page_key → bundle page_id (prefer the canonical _page form)
 _PAGE_ID_REVERSE: dict[str, str] = {}
 for _bundle_id, _fill_key in PAGE_ID_NORMALIZE.items():
-    if _bundle_id.endswith("_page") and _fill_key not in _PAGE_ID_REVERSE:
+    if _fill_key not in _PAGE_ID_REVERSE:
         _PAGE_ID_REVERSE[_fill_key] = _bundle_id
 
 

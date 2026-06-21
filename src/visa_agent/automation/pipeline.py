@@ -27,6 +27,13 @@ class PipelineEvent:
     status: str
     detail: dict[str, Any] = field(default_factory=dict)
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "node": self.node,
+            "status": self.status,
+            "detail": dict(self.detail),
+        }
+
 
 @dataclass(frozen=True)
 class PipelineResult:

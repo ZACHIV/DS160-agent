@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 # Allow running directly: python -m visa_agent.server
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -28,6 +28,7 @@ from visa_agent.automation import (
     DS160AutomationCore,
     PageDetectionError,
     UnsupportedPageError,
+    automation_task_catalog,
 )
 from visa_agent.browser.cdp_client import list_debug_targets
 from visa_agent.browser.live_form_fill import (
@@ -131,6 +132,7 @@ class FillPageResponse(BaseModel):
     missing: list[str]
     message: str
     application_id: str | None = None
+    pipeline_events: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class FillContinueResponse(BaseModel):
@@ -141,6 +143,7 @@ class FillContinueResponse(BaseModel):
     missing: list[str]
     message: str
     application_id: str | None = None
+    pipeline_events: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class StatusResponse(BaseModel):
@@ -257,6 +260,11 @@ class DossierValidateResponse(BaseModel):
 class AuditLogResponse(BaseModel):
     ok: bool
     entries: list[dict[str, Any]]
+
+
+class AutomationTasksResponse(BaseModel):
+    ok: bool
+    tasks: list[dict[str, Any]]
 
 
 class DriftCheckResponse(BaseModel):
@@ -588,6 +596,12 @@ def get_audit_log(limit: int = 50):
     return AuditLogResponse(ok=True, entries=read_recent_logs(limit=limit))
 
 
+@app.get("/automation/tasks", response_model=AutomationTasksResponse)
+def get_automation_tasks():
+    """Return automation task entries and their pipeline node outlines."""
+    return AutomationTasksResponse(ok=True, tasks=automation_task_catalog())
+
+
 @app.get("/dom-drift", response_model=DriftCheckResponse)
 def get_dom_drift(page_key: str | None = None):
     """Check whether expected DS-160 selectors are present in the current DOM."""
@@ -647,6 +661,7 @@ def post_fill_page(req: FillPageRequest):
             missing=outcome.missing,
             message=f"Filled {len(outcome.filled)} fields, {len(outcome.missing)} missing.",
             application_id=outcome.application_id,
+            pipeline_events=[event.to_dict() for event in outcome.pipeline_events],
         )
     except AutomationError as exc:
         _raise_http_for_automation_error(exc)
@@ -671,6 +686,7 @@ def post_fill_and_continue(req: FillPageRequest):
                 f"Next page: {outcome.new_page_key or 'unknown'}"
             ),
             application_id=outcome.application_id,
+            pipeline_events=[event.to_dict() for event in outcome.pipeline_events],
         )
     except AutomationError as exc:
         _raise_http_for_automation_error(exc)

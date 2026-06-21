@@ -6,14 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from visa_agent.audit_log import log_page_fill
-from visa_agent.browser.cdp_client import list_debug_targets
-from visa_agent.browser.live_form_fill import (
-    _PAGE_FILL_HANDLERS,
-    detect_current_page,
-    extract_application_id,
-    fill_and_continue,
-    fill_current_supported_page,
-)
+from visa_agent.automation.browser_driver import BrowserDriver, CDPBrowserDriver
 from visa_agent.checkpoint import (
     FillCheckpoint,
     checkpoint_workspace,
@@ -65,8 +58,9 @@ class FillAndContinueOutcome:
 class DS160AutomationCore:
     """Coordinates DS-160 fill tasks without HTTP or frontend concerns."""
 
-    def __init__(self, cdp_port: int = 9222) -> None:
+    def __init__(self, cdp_port: int = 9222, driver: BrowserDriver | None = None) -> None:
         self.cdp_port = cdp_port
+        self.driver = driver or CDPBrowserDriver(cdp_port)
 
     def fill_page(
         self,
@@ -112,13 +106,7 @@ class DS160AutomationCore:
         )
 
     def detect_application_id(self) -> str | None:
-        try:
-            result = extract_application_id()
-        except Exception:
-            return None
-        if result.ok:
-            return str(result.payload.get("application_id") or "") or None
-        return None
+        return self.driver.detect_application_id()
 
     def save_detected_application_id(
         self,
@@ -154,7 +142,7 @@ class DS160AutomationCore:
             "resolve_page": PipelineNode("resolve_page", action=self._resolve_page, next=["ensure_supported"]),
             "ensure_supported": PipelineNode(
                 "ensure_supported",
-                recognition=lambda ctx: str(ctx.get("page_key") or "") in _PAGE_FILL_HANDLERS,
+                recognition=lambda ctx: self.driver.supports_page(str(ctx.get("page_key") or "")),
                 next=["fill_continue"],
             ),
             "fill_continue": PipelineNode("fill_continue", action=self._fill_continue_action, next=["save_checkpoint"]),
@@ -164,7 +152,7 @@ class DS160AutomationCore:
 
     def _check_browser(self, context: dict[str, Any]) -> dict[str, Any]:
         try:
-            tabs = list_debug_targets(port=self.cdp_port)
+            tabs = self.driver.list_targets()
         except Exception as exc:
             raise BrowserUnavailableError(
                 "Chrome not reachable on CDP port. Launch Chrome with --remote-debugging-port=9222"
@@ -181,11 +169,11 @@ class DS160AutomationCore:
             return {"page_key": PAGE_ID_NORMALIZE.get(str(requested), str(requested))}
 
         try:
-            detected = detect_current_page()
+            detected = self.driver.detect_current_page()
         except Exception as exc:
             raise PageDetectionError(f"Cannot detect current page: {exc}") from exc
 
-        page_key = detected.payload.get("page_key")
+        page_key = detected.get("page_key")
         if not page_key:
             raise PageDetectionError("Cannot detect current page.")
         return {"page_key": page_key}
@@ -193,8 +181,7 @@ class DS160AutomationCore:
     def _fill_page_action(self, context: dict[str, Any]) -> dict[str, Any]:
         dossier: ApplicantDossier = context["dossier"]
         page_key = str(context.get("page_key") or "")
-        handler = _PAGE_FILL_HANDLERS.get(page_key)
-        result = handler(dossier) if handler else fill_current_supported_page(dossier)
+        result = self.driver.fill_page(page_key, dossier)
 
         filled = list(result.payload.get("filled") or [])
         missing = list(result.payload.get("missing") or [])
@@ -213,7 +200,7 @@ class DS160AutomationCore:
     def _fill_continue_action(self, context: dict[str, Any]) -> dict[str, Any]:
         dossier: ApplicantDossier = context["dossier"]
         page_key = str(context["page_key"])
-        result = fill_and_continue(page_key, dossier)
+        result = self.driver.fill_and_continue(page_key, dossier)
         fill_payload = result.get("fill_payload") or {}
         raw_new_key = result.get("new_page_key")
         new_page_key = bundle_page_id(str(raw_new_key)) if raw_new_key else None

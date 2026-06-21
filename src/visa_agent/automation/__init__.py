@@ -9,6 +9,7 @@ from visa_agent.automation.core import (
     PageDetectionError,
     UnsupportedPageError,
 )
+from visa_agent.automation.tasks import automation_task_catalog
 
 __all__ = [
     "AutomationError",
@@ -18,4 +19,5 @@ __all__ = [
     "FillPageOutcome",
     "PageDetectionError",
     "UnsupportedPageError",
+    "automation_task_catalog",
 ]

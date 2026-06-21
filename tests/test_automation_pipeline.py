@@ -25,6 +25,11 @@ class TaskPipelineTests(unittest.TestCase):
             "starting",
             "succeeded",
         ])
+        self.assertEqual(result.events[0].to_dict(), {
+            "node": "start",
+            "status": "starting",
+            "detail": {},
+        })
 
     def test_routes_to_on_error_when_recognition_misses(self) -> None:
         pipeline = TaskPipeline({

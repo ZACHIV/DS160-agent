@@ -37,7 +37,7 @@ from visa_agent.browser.fill_engine import (
     _resolve_value,
 )
 from visa_agent.browser.page_spec import FieldBinding
-from visa_agent.page_ids import PAGE_ID_NORMALIZE
+from visa_agent.page_ids import PAGE_ID_NORMALIZE, bundle_page_id
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,6 +121,8 @@ class PageIDNormalizeTests(unittest.TestCase):
     """Tests for page_id normalization mapping."""
 
     def test_page_id_mappings(self) -> None:
+        self.assertEqual(bundle_page_id("personal1"), "personal_page_1")
+        self.assertEqual(bundle_page_id("personal2"), "personal_page_2")
         self.assertEqual(PAGE_ID_NORMALIZE["us_contact_page"], "us_contact")
         self.assertEqual(PAGE_ID_NORMALIZE["family_relatives_page"], "family_relatives")
         self.assertEqual(PAGE_ID_NORMALIZE["family_spouse_page"], "family_spouse")
