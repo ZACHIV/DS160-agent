@@ -22,13 +22,16 @@ from visa_agent._paths import app_dir as _app_dir, project_root as _project_root
 PROJECT_ROOT = _project_root()
 APP_DIR = _app_dir()
 
-from visa_agent.browser.cdp_client import find_target_websocket_url, list_debug_targets
+from visa_agent.automation import (
+    AutomationError,
+    BrowserUnavailableError,
+    DS160AutomationCore,
+    PageDetectionError,
+    UnsupportedPageError,
+)
+from visa_agent.browser.cdp_client import list_debug_targets
 from visa_agent.browser.live_form_fill import (
-    _PAGE_FILL_HANDLERS,
     detect_current_page,
-    extract_application_id,
-    fill_and_continue,
-    fill_current_supported_page,
     save_current_page,
 )
 from visa_agent.dossier_contract import (
@@ -38,7 +41,6 @@ from visa_agent.dossier_contract import (
 )
 from visa_agent.audit_log import (
     log_dossier_import,
-    log_page_fill,
     read_recent_logs,
 )
 from visa_agent.checkpoint import (
@@ -52,7 +54,7 @@ from visa_agent.dom_drift import check_page_selectors
 from visa_agent.draft_bundle import build_draft_bundle
 from visa_agent.encryption import encrypt_dossier_json, is_encrypted_dossier
 from visa_agent.mapping import map_dossier_to_ds160
-from visa_agent.page_ids import PAGE_ID_NORMALIZE, bundle_page_id
+from visa_agent.page_ids import bundle_page_id
 from visa_agent.planner import build_execution_plan
 from visa_agent.schema import load_dossier, load_dossier_payload
 
@@ -66,6 +68,7 @@ DOSSIER_PATH = os.environ.get(
     str(_sample_data_dir() / "china_b1b2_sample.json"),
 )
 ACTIVE_DOSSIER_DOCUMENT: dict[str, Any] | None = None
+AUTOMATION = DS160AutomationCore(CDP_PORT)
 
 app = FastAPI(title="DS-160 Local Fill Server", version="1.0.0")
 
@@ -295,30 +298,25 @@ def _has_ceac_tab(tabs: list[dict[str, Any]]) -> bool:
 
 
 def _current_application_id() -> str | None:
-    try:
-        result = extract_application_id()
-        if result.ok:
-            return str(result.payload.get("application_id") or "")
-    except Exception:
-        return None
-    return None
+    return AUTOMATION.detect_application_id()
 
 
 def _save_detected_application_id(application_id: str | None, current_page_key: str | None = None) -> None:
-    if not application_id:
-        return
     try:
         dossier = _load_dossier()
-        existing = load_checkpoint(checkpoint_workspace())
-        cp = FillCheckpoint(
-            case_id=dossier.case_id,
-            application_id=application_id,
-            completed_pages=list(existing.completed_pages) if existing else [],
-            current_page_key=current_page_key or (existing.current_page_key if existing else None),
-        )
-        save_checkpoint(cp, checkpoint_workspace())
+        AUTOMATION.save_detected_application_id(dossier, application_id, current_page_key=current_page_key)
     except Exception:
         pass
+
+
+def _raise_http_for_automation_error(exc: AutomationError) -> None:
+    if isinstance(exc, BrowserUnavailableError):
+        raise HTTPException(status_code=503, detail=str(exc))
+    if isinstance(exc, PageDetectionError):
+        raise HTTPException(status_code=503, detail=str(exc))
+    if isinstance(exc, UnsupportedPageError):
+        raise HTTPException(status_code=400, detail=str(exc))
+    raise HTTPException(status_code=500, detail=str(exc))
 
 
 def _build_preview_payload(dossier) -> DossierPreviewResponse:
@@ -353,15 +351,6 @@ def _request_payload(req: Any) -> dict[str, Any]:
     if isinstance(req, dict):
         return dict(req)
     return dict(req.model_dump())
-
-
-# Map from page_id (as used in the frontend bundle) to fill function
-_PAGE_FILL_MAP = {
-    "personal_page_1": "personal1",
-    "personal_page_2": "personal2",
-    "personal1": "personal1",
-    "personal2": "personal2",
-}
 
 
 # ---------------------------------------------------------------------------
@@ -648,47 +637,19 @@ def get_draft_bundle():
 @app.post("/fill-page", response_model=FillPageResponse)
 def post_fill_page(req: FillPageRequest):
     """Fill the specified (or currently open) DS-160 page via CDP."""
-    tabs = _check_cdp()
-    if not tabs:
-        raise HTTPException(status_code=503, detail="Chrome not reachable on CDP port. Launch Chrome with --remote-debugging-port=9222")
-
     dossier = _load_dossier()
-
-    # Resolve page_id → canonical key
-    page_id = req.page_id
-    # Normalize frontend page_id (e.g. "personal_page_1" → "personal1")
-    if page_id:
-        canonical = PAGE_ID_NORMALIZE.get(page_id, page_id)
-    else:
-        # Auto-detect from browser URL
-        try:
-            detected = detect_current_page()
-            canonical = detected.payload.get("page_key")
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail=f"Cannot detect current page: {exc}")
-
     try:
-        handler = _PAGE_FILL_HANDLERS.get(canonical) if canonical else None
-        if handler:
-            result = handler(dossier)
-        else:
-            # Fallback: try auto-detect fill
-            result = fill_current_supported_page(dossier)
-
-        filled = result.payload.get("filled") or []
-        missing = result.payload.get("missing") or []
-        application_id = _current_application_id()
-        result_page_key = canonical or result.payload.get("page_key", "unsupported")
-        _save_detected_application_id(application_id, current_page_key=bundle_page_id(result_page_key) or result_page_key)
-        log_page_fill(dossier.case_id, result_page_key, len(filled), len(missing), application_id=application_id, ok=result.ok)
+        outcome = AUTOMATION.fill_page(dossier, requested_page_id=req.page_id)
         return FillPageResponse(
-            ok=result.ok,
-            page_key=result_page_key,
-            filled=filled,
-            missing=missing,
-            message=f"Filled {len(filled)} fields, {len(missing)} missing.",
-            application_id=application_id,
+            ok=outcome.ok,
+            page_key=outcome.page_key,
+            filled=outcome.filled,
+            missing=outcome.missing,
+            message=f"Filled {len(outcome.filled)} fields, {len(outcome.missing)} missing.",
+            application_id=outcome.application_id,
         )
+    except AutomationError as exc:
+        _raise_http_for_automation_error(exc)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -696,62 +657,23 @@ def post_fill_page(req: FillPageRequest):
 @app.post("/fill-and-continue", response_model=FillContinueResponse)
 def post_fill_and_continue(req: FillPageRequest):
     """Fill the current page, save, and click Next to advance to the next page."""
-    tabs = _check_cdp()
-    if not tabs:
-        raise HTTPException(status_code=503, detail="Chrome not reachable on CDP port. Launch Chrome with --remote-debugging-port=9222")
-
     dossier = _load_dossier()
-
-    canonical = PAGE_ID_NORMALIZE.get(req.page_id, req.page_id) if req.page_id else None
-    if not canonical:
-        try:
-            detected = detect_current_page()
-            canonical = detected.payload.get("page_key")
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail=f"Cannot detect current page: {exc}")
-
-    if canonical not in _PAGE_FILL_HANDLERS:
-        raise HTTPException(status_code=400, detail=f"No fill handler for page {canonical}")
-
     try:
-        result = fill_and_continue(canonical, dossier)
-        fill_payload = result.get("fill_payload") or {}
-        filled = list(fill_payload.get("filled") or [])
-        missing = list(fill_payload.get("missing") or [])
-        raw_new_key = result.get("new_page_key")
-        new_page_key = bundle_page_id(raw_new_key) if raw_new_key else None
-        application_id = result.get("application_id") or _current_application_id()
-
-        # Auto-save checkpoint on success
-        if result.get("fill_ok"):
-            try:
-                existing = load_checkpoint(checkpoint_workspace())
-                completed = list(existing.completed_pages) if existing else []
-                if canonical not in completed:
-                    completed.append(canonical)
-                cp = FillCheckpoint(
-                    case_id=dossier.case_id,
-                    application_id=application_id or (existing.application_id if existing else None),
-                    completed_pages=completed,
-                    current_page_key=new_page_key or raw_new_key,
-                )
-                save_checkpoint(cp, checkpoint_workspace())
-            except Exception:
-                pass  # checkpoint save is best-effort, don't fail the fill
-
-        log_page_fill(dossier.case_id, canonical, len(filled), len(missing),
-                      application_id=application_id,
-                      ok=bool(result.get("fill_ok")))
-
+        outcome = AUTOMATION.fill_current_page_and_continue(dossier, requested_page_id=req.page_id)
         return FillContinueResponse(
-            ok=bool(result.get("fill_ok") and result.get("next_ok")),
-            page_key=canonical,
-            new_page_key=new_page_key,
-            filled=filled,
-            missing=missing,
-            message=f"Filled {len(filled)} fields, {len(missing)} missing. Next page: {new_page_key or 'unknown'}",
-            application_id=application_id,
+            ok=outcome.ok,
+            page_key=outcome.page_key,
+            new_page_key=outcome.new_page_key,
+            filled=outcome.filled,
+            missing=outcome.missing,
+            message=(
+                f"Filled {len(outcome.filled)} fields, {len(outcome.missing)} missing. "
+                f"Next page: {outcome.new_page_key or 'unknown'}"
+            ),
+            application_id=outcome.application_id,
         )
+    except AutomationError as exc:
+        _raise_http_for_automation_error(exc)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

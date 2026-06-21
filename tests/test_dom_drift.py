@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -22,10 +21,13 @@ class DomDriftTests(unittest.TestCase):
             def call(self, method: str, params: dict | None = None) -> dict:
                 return {"result": {"result": {"value": False}}}
 
+        class FakeEvidence:
+            path = "/tmp/drift.png"
+
         with patch("visa_agent.dom_drift.SAMPLE_SELECTORS", {"test_page": ["#a", "#b", "#c"]}), patch(
             "visa_agent.dom_drift.find_target_websocket_url", return_value="ws://test"
         ), patch("visa_agent.dom_drift.CDPWebSocket", FakeCDP), patch(
-            "visa_agent.dom_drift.capture_page_screenshot", return_value=Path("/tmp/drift.png")
+            "visa_agent.automation.evidence.VisualEvidenceStore.screenshot", return_value=FakeEvidence()
         ):
             report = check_page_selectors("test_page")
 

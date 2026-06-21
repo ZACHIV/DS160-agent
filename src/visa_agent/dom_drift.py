@@ -6,15 +6,9 @@ and reports mismatches as warnings.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-import re
-from pathlib import Path
 
-from visa_agent.browser.cdp_client import (
-    CDPWebSocket,
-    capture_page_screenshot,
-    find_target_websocket_url,
-)
+from visa_agent.automation.evidence import VisualEvidenceStore
+from visa_agent.browser.cdp_client import CDPWebSocket, find_target_websocket_url
 
 
 SAMPLE_SELECTORS: dict[str, list[str]] = {
@@ -70,23 +64,9 @@ class DriftReport:
     evidence_path: str | None = None
 
 
-def _visual_evidence_dir() -> Path:
-    from visa_agent._paths import project_root
-
-    return project_root().parent / ".ds160" / "visual-evidence"
-
-
-def _safe_slug(value: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-") or "unknown"
-
-
 def _capture_drift_evidence(ws_url: str, page_key: str) -> str | None:
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    dest = _visual_evidence_dir() / f"{timestamp}-{_safe_slug(page_key)}-drift.png"
-    try:
-        return str(capture_page_screenshot(ws_url, dest))
-    except Exception:
-        return None
+    evidence = VisualEvidenceStore().screenshot(ws_url, kind="drift", label=page_key)
+    return evidence.path if evidence else None
 
 
 def check_page_selectors(
