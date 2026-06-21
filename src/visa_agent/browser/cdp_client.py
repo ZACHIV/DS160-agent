@@ -6,7 +6,9 @@ replacing a hand-rolled implementation that previously lived here.
 
 from __future__ import annotations
 
+import base64
 import json
+from pathlib import Path
 from types import TracebackType
 from typing import Any
 from urllib.request import urlopen
@@ -19,7 +21,7 @@ def list_debug_targets(port: int = 9222) -> list[dict[str, Any]]:
         return json.loads(response.read().decode())
 
 
-def find_target_websocket_url(url_substring: str, port: int = 9222) -> str:
+def find_target_websocket_url(url_substring: str = "", port: int = 9222) -> str:
     targets = list_debug_targets(port=port)
     for target in targets:
         if url_substring in (target.get("url") or ""):
@@ -82,3 +84,30 @@ class CDPWebSocket:
             message = json.loads(raw)
             if message.get("id") == message_id:
                 return message
+
+
+def capture_page_screenshot(
+    ws_url: str,
+    dest: Path,
+    *,
+    format: str = "png",
+    capture_beyond_viewport: bool = False,
+) -> Path:
+    """Capture the current browser page screenshot through CDP."""
+    with CDPWebSocket(ws_url) as client:
+        client.call("Page.enable")
+        response = client.call(
+            "Page.captureScreenshot",
+            {
+                "format": format,
+                "captureBeyondViewport": capture_beyond_viewport,
+            },
+        )
+
+    data = response.get("result", {}).get("data")
+    if not isinstance(data, str) or not data:
+        raise RuntimeError("CDP screenshot response did not include image data")
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(base64.b64decode(data))
+    return dest

@@ -263,6 +263,7 @@ class DriftCheckResponse(BaseModel):
     found: int
     missing: list[str]
     healthy: bool
+    evidence_path: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -613,10 +614,17 @@ def get_dom_drift(page_key: str | None = None):
             return DriftCheckResponse(
                 ok=True, page_key=page_key,
                 total_expected=0, found=0, missing=[], healthy=True,
+                evidence_path=None,
             )
         from visa_agent.audit_log import log_drift_warning
         if not report.healthy:
-            log_drift_warning(page_key, report.total_expected, report.found, report.missing)
+            log_drift_warning(
+                page_key,
+                report.total_expected,
+                report.found,
+                report.missing,
+                evidence_path=report.evidence_path,
+            )
         return DriftCheckResponse(
             ok=report.healthy,
             page_key=page_key,
@@ -624,6 +632,7 @@ def get_dom_drift(page_key: str | None = None):
             found=report.found,
             missing=report.missing,
             healthy=report.healthy,
+            evidence_path=report.evidence_path,
         )
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Drift check failed: {exc}")

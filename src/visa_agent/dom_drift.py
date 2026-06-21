@@ -6,8 +6,15 @@ and reports mismatches as warnings.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+import re
+from pathlib import Path
 
-from visa_agent.browser.cdp_client import CDPWebSocket, find_target_websocket_url
+from visa_agent.browser.cdp_client import (
+    CDPWebSocket,
+    capture_page_screenshot,
+    find_target_websocket_url,
+)
 
 
 SAMPLE_SELECTORS: dict[str, list[str]] = {
@@ -60,9 +67,34 @@ class DriftReport:
     found: int
     missing: list[str] = field(default_factory=list)
     healthy: bool = True
+    evidence_path: str | None = None
 
 
-def check_page_selectors(page_key: str, cdp_port: int = 9222) -> DriftReport:
+def _visual_evidence_dir() -> Path:
+    from visa_agent._paths import project_root
+
+    return project_root().parent / ".ds160" / "visual-evidence"
+
+
+def _safe_slug(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-") or "unknown"
+
+
+def _capture_drift_evidence(ws_url: str, page_key: str) -> str | None:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    dest = _visual_evidence_dir() / f"{timestamp}-{_safe_slug(page_key)}-drift.png"
+    try:
+        return str(capture_page_screenshot(ws_url, dest))
+    except Exception:
+        return None
+
+
+def check_page_selectors(
+    page_key: str,
+    cdp_port: int = 9222,
+    *,
+    save_evidence_on_warning: bool = True,
+) -> DriftReport:
     """Check which expected selectors exist in the current page DOM.
 
     Requires Chrome running with remote debugging on cdp_port and the
@@ -92,15 +124,20 @@ def check_page_selectors(page_key: str, cdp_port: int = 9222) -> DriftReport:
                 if not result:
                     missing.append(selector)
     except Exception:
+        evidence_path = _capture_drift_evidence(ws_url, page_key) if save_evidence_on_warning else None
         return DriftReport(page_key=page_key, total_expected=len(expected), found=0,
-                           missing=list(expected), healthy=False)
+                           missing=list(expected), healthy=False, evidence_path=evidence_path)
 
     found = len(expected) - len(missing)
     healthy = len(missing) <= 2 or (len(expected) > 0 and found / len(expected) >= 0.5)
+    evidence_path = None
+    if not healthy and save_evidence_on_warning:
+        evidence_path = _capture_drift_evidence(ws_url, page_key)
     return DriftReport(
         page_key=page_key,
         total_expected=len(expected),
         found=found,
         missing=missing,
         healthy=healthy,
+        evidence_path=evidence_path,
     )

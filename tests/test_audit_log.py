@@ -25,11 +25,12 @@ class TestAuditLog:
                     log_dossier_import("CASE-1")
                     log_page_fill("CASE-1", "personal1", 15, 2, application_id="AA00XX", ok=True)
                     log_page_fill("CASE-1", "personal2", 20, 0, application_id="AA00XX", ok=True)
-                    log_drift_warning("travel", 4, 3, ["input[name$='missing']"])
+                    log_drift_warning("travel", 4, 3, ["input[name$='missing']"], evidence_path="/tmp/drift.png")
 
                     entries = read_recent_logs(limit=50)
                     assert len(entries) == 5
                     assert entries[0]["event"] == "selector_drift"
+                    assert entries[0]["evidence_path"] == "/tmp/drift.png"
                     assert entries[1]["event"] == "page_fill"
                     assert entries[2]["event"] == "page_fill"
                     assert entries[3]["event"] == "dossier_import"

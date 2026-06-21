@@ -64,7 +64,13 @@ def log_dossier_import(case_id: str, encrypted: bool = False) -> None:
     _write_event("info", "dossier_import", {"case_id": case_id, "encrypted": encrypted})
 
 
-def log_drift_warning(page_key: str, expected: int, found: int, missing_selectors: list[str]) -> None:
+def log_drift_warning(
+    page_key: str,
+    expected: int,
+    found: int,
+    missing_selectors: list[str],
+    evidence_path: str | None = None,
+) -> None:
     _write_event(
         "warn",
         "selector_drift",
@@ -73,6 +79,7 @@ def log_drift_warning(page_key: str, expected: int, found: int, missing_selector
             "expected": expected,
             "found": found,
             "missing_selectors": missing_selectors[:10],
+            "evidence_path": evidence_path,
         },
     )
 

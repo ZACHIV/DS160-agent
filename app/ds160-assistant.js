@@ -778,7 +778,8 @@ if (checkDriftButton) {
       if (data.healthy) {
         pushLog("success", "漂移检测", `${data.page_key}: ${data.found}/${data.total_expected} selectors`);
       } else {
-        pushLog("warn", "漂移检测", `${data.page_key}: 缺失 ${data.missing.join(", ") || "unknown"}`);
+        const evidence = data.evidence_path ? ` · 截图 ${data.evidence_path}` : "";
+        pushLog("warn", "漂移检测", `${data.page_key}: 缺失 ${data.missing.join(", ") || "unknown"}${evidence}`);
       }
     } catch (error) {
       pushLog("error", "漂移检测失败", error.message || "无法检测当前页");
